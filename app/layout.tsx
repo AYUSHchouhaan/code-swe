@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GitHub Repo Downloader",
-  description: "Download GitHub repositories with authentication",
+  title: "code swe",
+  description: "github async multi-agent",
 };
 
 export default function RootLayout({
