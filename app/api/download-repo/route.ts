@@ -19,7 +19,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { owner, repo, branch, ref } = body;
 
-    if (!owner || !repo) {
+    // Trim whitespace from inputs
+    const trimmedOwner = owner?.trim();
+    const trimmedRepo = repo?.trim();
+    const trimmedBranch = branch?.trim();
+    const trimmedRef = ref?.trim();
+
+    if (!trimmedOwner || !trimmedRepo) {
       return NextResponse.json(
         { error: "Missing required fields: owner and repo" },
         { status: 400 }
@@ -31,19 +37,60 @@ export async function POST(request: NextRequest) {
       process.cwd(),
       "public",
       "downloads",
-      `${owner}-${repo}-${Date.now()}`
+      `${trimmedOwner}-${trimmedRepo}-${Date.now()}`
     );
 
-    console.log(`Downloading ${owner}/${repo} to ${destination}...`);
+    console.log(`Downloading ${trimmedOwner}/${trimmedRepo} to ${destination}...`);
+
+    // Verify repository exists and is accessible
+    try {
+      const repoCheckResponse = await fetch(
+        `https://api.github.com/repos/${trimmedOwner}/${trimmedRepo}`,
+        {
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+            Accept: "application/vnd.github.v3+json",
+            "User-Agent": "GitHub-Repo-Downloader",
+          },
+        }
+      );
+
+      if (!repoCheckResponse.ok) {
+        const errorData = await repoCheckResponse.json().catch(() => ({}));
+        let errorMessage = `Repository ${trimmedOwner}/${trimmedRepo} not found or not accessible`;
+        
+        if (repoCheckResponse.status === 404) {
+          errorMessage = `Repository ${trimmedOwner}/${trimmedRepo} does not exist or you don't have access to it. Please check the owner and repository name.`;
+        } else if (repoCheckResponse.status === 401) {
+          errorMessage = "Authentication failed. Please sign out and sign in again.";
+        }
+        
+        return NextResponse.json(
+          { success: false, error: errorMessage },
+          { status: repoCheckResponse.status }
+        );
+      }
+
+      const repoData = await repoCheckResponse.json();
+      console.log(`Repository verified: ${repoData.full_name}, default branch: ${repoData.default_branch}`);
+    } catch (error) {
+      console.error("Error verifying repository:", error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Failed to verify repository access",
+        },
+        { status: 500 }
+      );
+    }
 
     const result = await downloadRepository({
-      owner,
-      repo,
-      branch,
-      ref,
+      owner: trimmedOwner,
+      repo: trimmedRepo,
+      branch: trimmedBranch,
+      ref: trimmedRef,
       token: session.accessToken,
       destinationPath: destination,
-      format: "zip",
     });
 
     if (result.success) {

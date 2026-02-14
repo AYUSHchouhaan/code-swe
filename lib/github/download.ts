@@ -4,7 +4,6 @@ import { pipeline } from "stream/promises";
 import { createWriteStream } from "fs";
 import { Readable } from "stream";
 import extract from "extract-zip";
-import * as tar from "tar";
 
 export interface DownloadRepoOptions {
   owner: string;
@@ -13,7 +12,6 @@ export interface DownloadRepoOptions {
   ref?: string; // commit SHA, tag, or branch
   token: string;
   destinationPath: string;
-  format?: "zip" | "tar"; // default: zip
 }
 
 export interface DownloadResult {
@@ -36,18 +34,24 @@ export async function downloadRepository(
     ref,
     token,
     destinationPath,
-    format = "zip",
   } = options;
 
   // Determine the ref to download (priority: ref > branch > default)
-  const downloadRef = ref || branch || "HEAD";
+  // Filter out empty strings
+  const downloadRef = ref?.trim() || branch?.trim() || "HEAD";
 
-  // Construct the API URL
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/${format === "zip" ? "zipball" : "tarball"}/${downloadRef}`;
+  // Construct the API URL for zip download
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/zipball/${downloadRef}`;
 
+  // Use a temporary directory for the entire operation
+  const tempDir = path.join(path.dirname(destinationPath), `_temp_${Date.now()}`);
+  
   try {
-    // Create destination directory if it doesn't exist
-    await fs.promises.mkdir(destinationPath, { recursive: true });
+    console.log(`[Download] Starting download from: ${apiUrl}`);
+    
+    // Create temporary directory
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    console.log(`[Download] Created temp directory: ${tempDir}`);
 
     // Download the archive
     const response = await fetch(apiUrl, {
@@ -59,36 +63,54 @@ export async function downloadRepository(
       redirect: "follow", // GitHub will redirect to the actual archive URL
     });
 
+    console.log(`[Download] Response status: ${response.status}`);
+    
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
-      throw new Error(
-        `Failed to download repository: ${response.status} ${response.statusText} - ${errorText}`
-      );
+      const errorMessage = `Failed to download repository: ${response.status} ${response.statusText} - ${errorText}`;
+      console.error(`[Download] Error: ${errorMessage}`);
+      throw new Error(errorMessage);
     }
 
     // Save the archive to a temporary file
-    const tempArchivePath = path.join(
-      destinationPath,
-      `temp-${Date.now()}.${format === "zip" ? "zip" : "tar.gz"}`
-    );
+    const tempArchivePath = path.join(tempDir, "repo.zip");
 
     // Stream the response to file
     if (response.body) {
+      console.log(`[Download] Streaming to temp file: ${tempArchivePath}`);
       const fileStream = createWriteStream(tempArchivePath);
       await pipeline(Readable.fromWeb(response.body as any), fileStream);
+      console.log(`[Download] Archive saved successfully`);
     } else {
       throw new Error("Response body is null");
     }
 
     // Extract the archive
-    if (format === "zip") {
-      await extractZipArchive(tempArchivePath, destinationPath);
-    } else {
-      await extractTarArchive(tempArchivePath, destinationPath);
+    console.log(`[Download] Starting extraction...`);
+    await extractZipArchive(tempArchivePath, tempDir);
+    console.log(`[Download] Extraction completed`);
+
+    // Find the extracted directory (GitHub creates a single top-level directory)
+    const extractedItems = await fs.promises.readdir(tempDir);
+    const repoFolder = extractedItems.find(item => item !== 'repo.zip');
+    
+    if (!repoFolder) {
+      throw new Error('No extracted folder found');
     }
 
-    // Clean up the temporary archive
-    await fs.promises.unlink(tempArchivePath);
+    const extractedRepoPath = path.join(tempDir, repoFolder);
+    console.log(`[Download] Found extracted folder: ${repoFolder}`);
+
+    // Create parent directory for destination
+    await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
+    
+    // Move the extracted folder to the final destination
+    await fs.promises.rename(extractedRepoPath, destinationPath);
+    console.log(`[Download] Moved to destination: ${destinationPath}`);
+
+    // Clean up temp directory
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+    console.log(`[Download] Cleaned up temp directory`);
 
     return {
       success: true,
@@ -96,122 +118,87 @@ export async function downloadRepository(
       message: `Repository ${owner}/${repo} downloaded successfully`,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    console.error(`[Download] Failed:`, error);
+    console.error(`[Download] Error message: ${errorMessage}`);
+    
+    // Clean up temp directory on error
+    try {
+      await fs.promises.rm(tempDir, { recursive: true, force: true });
+    } catch (cleanupError) {
+      console.error(`[Download] Failed to cleanup temp directory:`, cleanupError);
+    }
+    
     return {
       success: false,
       path: destinationPath,
-      message: error instanceof Error ? error.message : "Unknown error occurred",
+      message: errorMessage,
     };
   }
 }
 
 /**
- * Extract ZIP archive
+ * Extract ZIP archive directly to destination
  */
 async function extractZipArchive(
   archivePath: string,
   destinationPath: string
 ): Promise<void> {
-  // Extract to temp location first
-  const tempExtractPath = path.join(destinationPath, "_temp_extract");
-  await extract(archivePath, { dir: path.resolve(tempExtractPath) });
-
-  // GitHub archives contain a single top-level directory, move its contents up
-  const extractedItems = await fs.promises.readdir(tempExtractPath);
-  if (extractedItems.length === 1) {
-    const topLevelDir = path.join(tempExtractPath, extractedItems[0]);
-    const stat = await fs.promises.stat(topLevelDir);
-
-    if (stat.isDirectory()) {
-      // Move all contents from the top-level directory to destination
-      const contents = await fs.promises.readdir(topLevelDir);
-      for (const item of contents) {
-        const sourcePath = path.join(topLevelDir, item);
-        const destPath = path.join(destinationPath, item);
-        await fs.promises.rename(sourcePath, destPath);
-      }
-    }
+  try {
+    console.log(`[Extract] Extracting zip to: ${destinationPath}`);
+    await extract(archivePath, { dir: path.resolve(destinationPath) });
+    console.log(`[Extract] Extraction completed`);
+  } catch (error) {
+    console.error(`[Extract] Extraction failed:`, error);
+    throw error;
   }
-
-  // Clean up temp directory
-  await fs.promises.rm(tempExtractPath, { recursive: true, force: true });
 }
 
-/**
- * Extract TAR archive
- */
-async function extractTarArchive(
-  archivePath: string,
-  destinationPath: string
-): Promise<void> {
-  // Extract to temp location first
-  const tempExtractPath = path.join(destinationPath, "_temp_extract");
-  await fs.promises.mkdir(tempExtractPath, { recursive: true });
+// /**
+//  * Helper function to download a repository with GitHub App authentication
+//  */
+// export async function downloadRepositoryWithApp(
+//   owner: string,
+//   repo: string,
+//   destinationPath: string,
+//   options?: {
+//     branch?: string;
+//     ref?: string;
+//     installationId?: string;
+//     appId?: string;
+//     privateKey?: string;
+//   }
+// ): Promise<DownloadResult> {
+//   // Get credentials from environment if not provided
+//   const installationId =
+//     options?.installationId || process.env.GITHUB_APP_INSTALLATION_ID;
+//   const appId = options?.appId || process.env.GITHUB_APP_ID;
+//   const privateKey = options?.privateKey || process.env.GITHUB_PRIVATE_KEY;
 
-  await tar.x({
-    file: archivePath,
-    cwd: tempExtractPath,
-    strip: 1, // Strip the top-level directory created by GitHub
-  });
+//   if (!installationId || !appId || !privateKey) {
+//     return {
+//       success: false,
+//       path: destinationPath,
+//       message:
+//         "Missing GitHub App credentials. Set GITHUB_APP_ID, GITHUB_PRIVATE_KEY, and GITHUB_APP_INSTALLATION_ID environment variables.",
+//     };
+//   }
 
-  // Move all contents from temp to destination
-  const contents = await fs.promises.readdir(tempExtractPath);
-  for (const item of contents) {
-    const sourcePath = path.join(tempExtractPath, item);
-    const destPath = path.join(destinationPath, item);
-    await fs.promises.rename(sourcePath, destPath);
-  }
+//   // Get installation token
+//   const { getInstallationTokenString } = await import("./auth");
+//   const token = await getInstallationTokenString(
+//     installationId,
+//     appId,
+//     privateKey
+//   );
 
-  // Clean up temp directory
-  await fs.promises.rm(tempExtractPath, { recursive: true, force: true });
-}
-
-/**
- * Helper function to download a repository with GitHub App authentication
- */
-export async function downloadRepositoryWithApp(
-  owner: string,
-  repo: string,
-  destinationPath: string,
-  options?: {
-    branch?: string;
-    ref?: string;
-    format?: "zip" | "tar";
-    installationId?: string;
-    appId?: string;
-    privateKey?: string;
-  }
-): Promise<DownloadResult> {
-  // Get credentials from environment if not provided
-  const installationId =
-    options?.installationId || process.env.GITHUB_APP_INSTALLATION_ID;
-  const appId = options?.appId || process.env.GITHUB_APP_ID;
-  const privateKey = options?.privateKey || process.env.GITHUB_PRIVATE_KEY;
-
-  if (!installationId || !appId || !privateKey) {
-    return {
-      success: false,
-      path: destinationPath,
-      message:
-        "Missing GitHub App credentials. Set GITHUB_APP_ID, GITHUB_PRIVATE_KEY, and GITHUB_APP_INSTALLATION_ID environment variables.",
-    };
-  }
-
-  // Get installation token
-  const { getInstallationTokenString } = await import("./auth");
-  const token = await getInstallationTokenString(
-    installationId,
-    appId,
-    privateKey
-  );
-
-  // Download repository
-  return downloadRepository({
-    owner,
-    repo,
-    token,
-    destinationPath,
-    branch: options?.branch,
-    ref: options?.ref,
-    format: options?.format,
-  });
-}
+//   // Download repository
+//   return downloadRepository({
+//     owner,
+//     repo,
+//     token,
+//     destinationPath,
+//     branch: options?.branch,
+//     ref: options?.ref,
+//   });
+// }
