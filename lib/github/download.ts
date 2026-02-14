@@ -38,7 +38,7 @@ export async function downloadRepository(
 
   // Determine the ref to download (priority: ref > branch > default)
   // Filter out empty strings
-  const downloadRef = ref?.trim() || branch?.trim() || "HEAD";
+  const downloadRef = ref?.trim() || branch?.trim() ;
 
   // Construct the API URL for zip download
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/zipball/${downloadRef}`;
