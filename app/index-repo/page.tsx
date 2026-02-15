@@ -8,6 +8,7 @@ interface Repo {
   name: string;
   hasIndex: boolean;
   indexedFiles: number;
+  hasMapped: boolean;
 }
 
 interface IndexResult {
@@ -18,6 +19,13 @@ interface IndexResult {
   error?: string;
 }
 
+interface MapResult {
+  success: boolean;
+  outputPath?: string;
+  architecture?: any;
+  error?: string;
+}
+
 export default function IndexRepoPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -25,7 +33,9 @@ export default function IndexRepoPage() {
   const [selectedRepo, setSelectedRepo] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [mapping, setMapping] = useState(false);
   const [result, setResult] = useState<IndexResult | null>(null);
+  const [mapResult, setMapResult] = useState<MapResult | null>(null);
   const [batchSize, setBatchSize] = useState(5);
   const [model, setModel] = useState("llama3.2");
 
@@ -110,6 +120,65 @@ export default function IndexRepoPage() {
     }
   };
 
+  const handleMap = async () => {
+    if (!selectedRepo) {
+      setMapResult({
+        success: false,
+        error: "Please select a repository",
+      });
+      return;
+    }
+
+    const selectedRepoData = repos.find((r) => r.name === selectedRepo);
+    if (!selectedRepoData?.hasIndex) {
+      setMapResult({
+        success: false,
+        error: "Please index the repository first before mapping",
+      });
+      return;
+    }
+
+    setMapping(true);
+    setMapResult(null);
+
+    try {
+      const response = await fetch("/api/map-repo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          repoName: selectedRepo,
+          model: model,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setMapResult({
+          success: true,
+          outputPath: data.outputPath,
+          architecture: data.data,
+        });
+        // Refresh repos list to update mapping status
+        fetchRepos();
+      } else {
+        setMapResult({
+          success: false,
+          error: data.error || "Failed to map repository",
+        });
+      }
+    } catch (error) {
+      setMapResult({
+        success: false,
+        error: `Error: ${error}`,
+      });
+    } finally {
+      setMapping(false);
+    }
+  };
+
   if (status === "loading" || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-gray-900 via-purple-900 to-gray-900">
@@ -150,7 +219,7 @@ export default function IndexRepoPage() {
                 repos.map((repo) => (
                   <option key={repo.name} value={repo.name}>
                     {repo.name}
-                    {repo.hasIndex ? ` (✓ Indexed - ${repo.indexedFiles} files)` : ""}
+                    {repo.hasIndex ? ` (✓ Indexed - ${repo.indexedFiles} files${repo.hasMapped ? ' • ✓ Mapped' : ''})` : ""}
                   </option>
                 ))
               )}
@@ -166,7 +235,8 @@ export default function IndexRepoPage() {
               <div className="text-xl font-bold break-all">{selectedRepo}</div>
               {selectedRepoData?.hasIndex && (
                 <div className="text-sm text-green-400 mt-2">
-                  ✓ Already indexed with {selectedRepoData.indexedFiles} files
+                  ✓ Indexed with {selectedRepoData.indexedFiles} files
+                  {selectedRepoData?.hasMapped && " • ✓ Mapped"}
                 </div>
               )}
             </div>
@@ -319,6 +389,165 @@ export default function IndexRepoPage() {
                   <div className="text-sm text-red-200">{result.error}</div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Divider */}
+          {selectedRepoData?.hasIndex && (
+            <div className="my-8 border-t border-white/10"></div>
+          )}
+
+          {/* Map Button - Only show if repo is indexed */}
+          {selectedRepoData?.hasIndex && (
+            <>
+              <div className="mb-4">
+                <h3 className="text-xl font-bold mb-2">🗺️ Architecture Mapping</h3>
+                <p className="text-sm text-gray-300">
+                  Generate high-level architecture overview from indexed data
+                </p>
+              </div>
+
+              <button
+                onClick={handleMap}
+                disabled={mapping || !selectedRepo}
+                className={`w-full py-4 rounded-lg font-bold text-lg transition-all duration-300 ${
+                  mapping
+                    ? "bg-yellow-500/50 cursor-wait"
+                    : !selectedRepo
+                    ? "bg-gray-500/50 cursor-not-allowed"
+                    : selectedRepoData?.hasMapped
+                    ? "bg-blue-500/50 hover:bg-blue-500/70"
+                    : "bg-linear-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                }`}
+              >
+                {mapping ? (
+                  <span className="flex items-center justify-center">
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Mapping...
+                  </span>
+                ) : selectedRepoData?.hasMapped ? (
+                  "🔄 Re-generate Architecture Map"
+                ) : (
+                  "🗺️ Generate Architecture Map"
+                )}
+              </button>
+
+              {/* Mapping Status */}
+              {mapping && (
+                <div className="mt-6 p-4 bg-yellow-500/20 border border-yellow-400/30 rounded-lg">
+                  <div className="flex items-center">
+                    <svg
+                      className="animate-spin h-5 w-5 mr-3 text-yellow-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    <div>
+                      <div className="font-bold text-yellow-300">Mapping Repository</div>
+                      <div className="text-sm text-yellow-200">
+                        Generating architecture overview... This may take a moment.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {mapResult && !mapping && (
+                <div
+                  className={`mt-6 p-4 rounded-lg border ${
+                    mapResult.success
+                      ? "bg-green-500/20 border-green-400/30"
+                      : "bg-red-500/20 border-red-400/30"
+                  }`}
+                >
+                  {mapResult.success ? (
+                    <div>
+                      <div className="font-bold text-2xl text-green-400 mb-2">
+                        ✅ Mapping Done!
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div className="text-gray-300 break-all">
+                          <span>Output:</span>{" "}
+                          <code className="text-green-300">{mapResult.outputPath}</code>
+                        </div>
+                        {mapResult.architecture && (
+                          <div className="mt-3 p-3 bg-black/30 rounded text-xs">
+                            <div className="font-semibold text-cyan-300 mb-1">Architecture Overview:</div>
+                            <div className="space-y-1 text-gray-300">
+                              <div><strong>Framework:</strong> {mapResult.architecture.framework}</div>
+                              <div><strong>UI Layer:</strong> {mapResult.architecture.uiLayer}</div>
+                              <div><strong>DB Layer:</strong> {mapResult.architecture.dbLayer}</div>
+                              <div><strong>Auth:</strong> {mapResult.architecture.authStrategy}</div>
+                              <div><strong>Styling:</strong> {mapResult.architecture.styling}</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="font-bold text-xl text-red-400 mb-2">
+                        ❌ Error
+                      </div>
+                      <div className="text-sm text-red-200">{mapResult.error}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedRepoData?.hasMapped && !mapping && !mapResult && (
+                <div className="mt-4 p-3 bg-blue-500/10 border border-blue-400/20 rounded-lg text-sm text-blue-300">
+                  ℹ️ This repository already has an architecture map. Click to regenerate.
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Locked Message */}
+          {!selectedRepoData?.hasIndex && selectedRepo && (
+            <div className="mt-8 p-4 bg-gray-500/20 border border-gray-400/30 rounded-lg">
+              <div className="flex items-center text-gray-300">
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <div className="font-semibold">Architecture Mapping Locked</div>
+                  <div className="text-sm">Please index the repository first to unlock mapping</div>
+                </div>
+              </div>
             </div>
           )}
         </div>

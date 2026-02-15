@@ -26,7 +26,9 @@ export async function GET() {
     }).map(repoName => {
       const repoPath = path.join(downloadsPath, repoName);
       const indexPath = path.join(repoPath, '.codebase-index', 'index.json');
+      const architecturePath = path.join(repoPath, '.codebase-index', 'architecture.json');
       const hasIndex = fs.existsSync(indexPath);
+      const hasMapped = fs.existsSync(architecturePath);
       
       let indexedFiles = 0;
       if (hasIndex) {
@@ -42,6 +44,7 @@ export async function GET() {
         name: repoName,
         hasIndex,
         indexedFiles,
+        hasMapped,
       };
     });
 

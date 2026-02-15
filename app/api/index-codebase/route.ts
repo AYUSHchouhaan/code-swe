@@ -2,93 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-const SYSTEM_PROMPT = `You are a senior software engineer and codebase documentation generator.
-
-Your job is to analyze ONE source code file and generate structured metadata
-that will later be used by an AI agent to understand and modify the repository.
-
-You MUST output STRICT JSON only. No explanations. No markdown.
-
-The goal is to help an AI agent:
-- understand what the file does
-- understand how it connects to other files
-- know where new features or bug fixes should be added
-
-If information is not present, return empty arrays or null.
-
---------------------------------
-OUTPUT JSON SCHEMA:
-
-{
-  "path": string,
-  "type": "api-route" | "react-component" | "db-model" | "utility" | "middleware" | "config" | "test" | "service" | "unknown",
-  "summary": string,
-  "imports": string[],
-  "functions": [
-    {
-      "name": string,
-      "description": string
-    }
-  ],
-  "exports": string[],
-  "routes": string[],
-  "dbModels": string[],
-  "keywords": string[]
-}
-
---------------------------------
-INSTRUCTIONS:
-
-1. "summary"
-   Write ONE concise sentence explaining the purpose of the file.
-
-2. "type"
-   Classify file role:
-   - API route / controller → api-route
-   - React component → react-component
-   - Prisma/Mongoose schema → db-model
-   - Helper functions → utility
-   - Express/Next middleware → middleware
-   - Config files → config
-   - Test files → test
-   - Business logic/services → service
-   - Otherwise → unknown
-
-3. "imports"
-   Extract local imports only (ignore node_modules).
-
-4. "functions"
-   List main functions and describe what they do in plain English.
-
-5. "routes"
-   If HTTP routes exist, extract them.
-   Example: "POST /api/login"
-
-6. "dbModels"
-   Detect database models used (User, Post, etc.)
-
-7. "keywords"
-   Add 5–10 important technical keywords.
-
---------------------------------
-EXAMPLE OUTPUT:
-
-{
-  "path": "src/auth/login.ts",
-  "type": "api-route",
-  "summary": "Handles user login and JWT generation.",
-  "imports": ["../db/userModel","../utils/hash"],
-  "functions": [
-    {
-      "name": "loginUser",
-      "description": "Validates credentials and returns a JWT token."
-    }
-  ],
-  "exports": ["loginUser"],
-  "routes": ["POST /api/login"],
-  "dbModels": ["User"],
-  "keywords": ["auth","login","jwt","password","authentication"]
-}`;
+// Load the file indexing prompt from prompts folder
+const PROMPTS_DIR = path.join(process.cwd(), 'prompts');
+const SYSTEM_PROMPT = fs.readFileSync(
+  path.join(PROMPTS_DIR, 'file-indexing.txt'),
+  'utf-8'
+);
 
 // Files and directories to exclude
 const EXCLUDE_PATTERNS = [
