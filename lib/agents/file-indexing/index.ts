@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import { ChatOllama } from '@langchain/ollama';
+import { z } from 'zod';
 
 // Files and directories to exclude
 const EXCLUDE_PATTERNS = [
@@ -102,7 +104,7 @@ function shouldExcludeFile(filePath: string, basePath: string): boolean {
 }
 
 /**
- * Call Ollama API to analyze multiple files with structured output
+ * Call Ollama API using LangGraph with Zod structured output
  */
 async function analyzeFilesWithOllama(
   filesData: { path: string; content: string }[],
@@ -110,34 +112,47 @@ async function analyzeFilesWithOllama(
   model: string = 'llama3.2'
 ): Promise<BatchResult | null> {
   try {
-    // Create the prompt with all files
-    const filesJson = filesData.map(f => ({
-      path: f.path,
-      content: f.content
-    }));
-
-    const prompt = `${systemPrompt}\n\n---FILES TO ANALYZE---\n\n${JSON.stringify(filesJson, null, 2)}\n\n---END OF FILES---\n\nNow analyze ALL the files above and return a JSON object where each key is a file path and each value is the metadata object for that file.`;
-
-    const response = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,
-        prompt: prompt,
-        stream: false,
-        format: 'json',
-      }),
+    // Create Ollama LLM instance
+    const llm = new ChatOllama({
+      model: model,
+      temperature: 0.3,
+      baseUrl: 'http://localhost:11434',
+      format: 'json',
     });
 
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.statusText}`);
-    }
+    // Define Zod schema for file metadata
+    const fileMetadataSchema = z.object({
+      type: z.string(),
+      summary: z.string(),
+      imports: z.array(z.string()),
+      functions: z.array(
+        z.object({
+          name: z.string(),
+          description: z.string(),
+        })
+      ),
+      exports: z.array(z.string()),
+      routes: z.array(z.string()),
+      dbModels: z.array(z.string()),
+      keywords: z.array(z.string()),
+    });
 
-    const data = await response.json();
-    const result = JSON.parse(data.response);
-    
+    // Schema for the entire result - object with file paths as keys
+    const batchResultSchema = z.record(z.string(), fileMetadataSchema);
+
+    // Create structured LLM with Zod schema
+    const structuredLlm = llm.withStructuredOutput(batchResultSchema);
+
+    // Prepare the user message with files data
+    const filesJson = JSON.stringify(filesData, null, 2);
+    const userMessage = `---FILES TO ANALYZE---\n\n${filesJson}\n\n---END OF FILES---\n\nAnalyze ALL the files above and return a JSON object where each key is a file path and each value is the metadata object for that file.`;
+
+    // Invoke LLM with structured output
+    const result = await structuredLlm.invoke([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ]);
+
     return result as BatchResult;
   } catch (error) {
     console.error('Error analyzing files with Ollama:', error);

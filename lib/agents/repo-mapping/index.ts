@@ -1,12 +1,23 @@
 import fs from 'fs';
 import path from 'path';
+import { ChatOllama } from '@langchain/ollama';
+import { z } from 'zod';
 
 export interface ArchitectureMap {
-  [key: string]: any;
+  framework: string;
+  uiLayer: string;
+  dbLayer: string;
+  entryPoints: string[];
+  apiRoutesFolder: string;
+  authStrategy: string;
+  styling: string;
+  testing: string;
+  folders: { [folderPath: string]: string };
+  dependencies: { [packageName: string]: string };
 }
 
 /**
- * Call Ollama API to generate architecture map from indexed data with structured output
+ * Call Ollama API using LangGraph with Zod structured output
  */
 async function generateArchitectureMapWithOllama(
   indexedData: any,
@@ -14,28 +25,41 @@ async function generateArchitectureMapWithOllama(
   model: string = 'llama3.2'
 ): Promise<ArchitectureMap | null> {
   try {
-    const prompt = `${systemPrompt}\n\n---INDEXED CODEBASE DATA---\n\n${JSON.stringify(indexedData, null, 2)}\n\n---END OF INDEXED DATA---\n\nNow generate a comprehensive architecture map based on the indexed data above.`;
-
-    const response = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,
-        prompt: prompt,
-        stream: false,
-        format: 'json',
-      }),
+    // Create Ollama LLM instance
+    const llm = new ChatOllama({
+      model: model,
+      temperature: 0.3,
+      baseUrl: 'http://localhost:11434',
+      format: 'json',
     });
 
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.statusText}`);
-    }
+    // Define Zod schema for architecture map
+    const architectureMapSchema = z.object({
+      framework: z.string(),
+      uiLayer: z.string(),
+      dbLayer: z.string(),
+      entryPoints: z.array(z.string()),
+      apiRoutesFolder: z.string(),
+      authStrategy: z.string(),
+      styling: z.string(),
+      testing: z.string(),
+      folders: z.record(z.string(), z.string()),
+      dependencies: z.record(z.string(), z.string()),
+    });
 
-    const data = await response.json();
-    const result = JSON.parse(data.response);
-    
+    // Create structured LLM with Zod schema
+    const structuredLlm = llm.withStructuredOutput(architectureMapSchema);
+
+    // Prepare the user message with indexed data
+    const indexedJson = JSON.stringify(indexedData, null, 2);
+    const userMessage = `---INDEXED CODEBASE DATA---\n\n${indexedJson}\n\n---END OF INDEXED DATA---\n\nGenerate a comprehensive architecture map based on the indexed data above.`;
+
+    // Invoke LLM with structured output
+    const result = await structuredLlm.invoke([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ]);
+
     return result as ArchitectureMap;
   } catch (error) {
     console.error('Error generating architecture map:', error);
