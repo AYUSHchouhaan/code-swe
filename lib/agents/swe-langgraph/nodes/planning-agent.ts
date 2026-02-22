@@ -1,75 +1,87 @@
-import { AgentState, CodeStep } from "../types";
-import { PLANNING_AGENT_PROMPT } from "../prompts";
-import {
-  createLLM,
-  invokeLLMWithJSON,
-  readJsonFile,
-  readMultipleFiles,
-  formatFilesForContext,
-  truncateContent,
-} from "../functions";
-
-interface PlanningAgentOutput {
-  plan: string[];
-  codeSteps: CodeStep[];
-}
+import { ChatOllama } from '@langchain/ollama';
+import { z } from 'zod';
+import fs from 'fs';
+import path from 'path';
+import type { AgentState, PlanStep } from '../types';
 
 /**
- * Planning Agent Node
- * 
- * This agent creates a step-by-step implementation plan based on the relevant files.
- * Each step in the plan modifies exactly ONE file, ensuring sequential and manageable changes.
+ * Node 3: Planning Agent
+ * Opens relevant files, creates file contents JSON, gets step-by-step plan from LLM
  */
-export async function planningAgent(state: AgentState): Promise<Partial<AgentState>> {
-  console.log("📋 Running Planning Agent...");
+export async function planningAgentNode(state: AgentState): Promise<Partial<AgentState>> {
+  console.log('\n=== NODE 3: Planning Agent ===');
+  console.log('Creating implementation plan...');
 
-  try {
-    // Read relevant files
-    const relevantFileContents = await readMultipleFiles(
-      state.repoPath,
-      state.relevantFiles || []
-    );
-
-    // Read file index and repo map for additional context
-    const fileIndex = await readJsonFile(state.fileIndexPath);
-    const repoMap = await readJsonFile(state.repoMapPath);
-
-    // Create the user message with all context
-    const userMessage = `
-Issue/Task:
-${state.issue}
-
-${formatFilesForContext(relevantFileContents, "Relevant Files")}
-
-File Index (truncated):
-${truncateContent(JSON.stringify(fileIndex, null, 2), 3000)}
-
-Repository Map:
-${truncateContent(JSON.stringify(repoMap, null, 2), 2000)}
-
-Please create a detailed step-by-step plan to solve this issue.
-Remember: EACH STEP must modify EXACTLY ONE FILE.
-`;
-
-    // Invoke LLM
-    const llm = createLLM();
-    const result = await invokeLLMWithJSON<PlanningAgentOutput>(
-      llm,
-      PLANNING_AGENT_PROMPT,
-      userMessage
-    );
-
-    console.log(`✅ Created plan with ${result.codeSteps.length} steps`);
-    result.codeSteps.forEach((step) => {
-      console.log(`  Step ${step.step}: ${step.filePath}`);
-    });
-
-    return {
-      plan: result.plan,
-      codeSteps: result.codeSteps,
-    };
-  } catch (error) {
-    console.error("❌ Error in planning agent:", error);
-    throw error;
+  // Read file contents
+  const fileContents: Record<string, string> = {};
+  for (const filePath of state.relevantFilePaths) {
+    const fullPath = path.join(state.repoPath, filePath);
+    try {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      fileContents[filePath] = content;
+      console.log(`Loaded: ${filePath}`);
+    } catch (error) {
+      console.warn(`Could not read file: ${filePath}`);
+    }
   }
+
+  // Create Ollama LLM instance
+  const llm = new ChatOllama({
+    model: 'llama3.2',
+    temperature: 0.3,
+    baseUrl: 'http://localhost:11434',
+    format: 'json',
+  });
+
+  // Define Zod schema for plan steps
+  const planStepSchema = z.object({
+    stepNumber: z.number(),
+    description: z.string(),
+    action: z.enum(['edit', 'create', 'delete']),
+    filePath: z.string(),
+    completed: z.boolean(),
+  });
+
+  const planSchema = z.object({
+    steps: z.array(planStepSchema).describe('Step-by-step plan to implement the changes'),
+    summary: z.string().describe('Brief summary of the overall approach'),
+  });
+
+  // Create structured LLM
+  const structuredLlm = llm.withStructuredOutput(planSchema);
+
+  const systemPrompt = `You are an expert software engineer creating implementation plans.
+
+Given a user query and relevant file contents, create a detailed step-by-step plan.
+
+Rules:
+1. Each step should modify/create/delete exactly ONE file
+2. Steps should be in logical order
+3. Be specific about what changes to make
+4. Include file path for each step
+5. Mark all steps as not completed initially`;
+
+  const userMessage = `User Query: ${state.query}
+
+File Contents:
+${JSON.stringify(fileContents, null, 2)}
+
+Create a step-by-step implementation plan to address this query.`;
+
+  // Invoke LLM
+  const result = await structuredLlm.invoke([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userMessage },
+  ]);
+
+  console.log('Plan Summary:', result.summary);
+  console.log(`Generated ${result.steps.length} steps:`);
+  result.steps.forEach((step) => {
+    console.log(`  ${step.stepNumber}. [${step.action}] ${step.filePath}: ${step.description}`);
+  });
+
+  return {
+    fileContents,
+    planSteps: result.steps,
+  };
 }

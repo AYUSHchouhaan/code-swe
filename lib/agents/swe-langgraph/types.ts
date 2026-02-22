@@ -1,45 +1,62 @@
 import { Annotation } from "@langchain/langgraph";
 
-export interface CodeStep {
-  step: number;
+export interface PlanStep {
+  stepNumber: number;
   description: string;
+  action: 'edit' | 'create' | 'delete';
   filePath: string;
-  completed?: boolean;
+  completed: boolean;
 }
 
 export const AgentStateAnnotation = Annotation.Root({
-  // task info
-  repoId: Annotation<string>,
+  // User input
+  query: Annotation<string>,
   repoPath: Annotation<string>,
-  issue: Annotation<string>,
 
-  // knowledge (references only)
-  fileIndexPath: Annotation<string>,   // path to JSON file
-  repoMapPath: Annotation<string>,     // path to repo_map.json
+  // Paths to index and map files
+  indexFilePath: Annotation<string>,
+  mapFilePath: Annotation<string>,
 
-  // produced by agents
-  searchQueries: Annotation<string[]>({
-    reducer: (current, update) => update ?? current,
-    default: () => [],
-  }),
-  relevantFiles: Annotation<string[]>({
+  // Query breakdown (Node 1)
+  subqueries: Annotation<string[]>({
     reducer: (current, update) => update ?? current,
     default: () => [],
   }),
 
-  plan: Annotation<string[]>({
-    reducer: (current, update) => update ?? current,
-    default: () => [],
-  }),
-  codeSteps: Annotation<CodeStep[]>({
+  // Search results (Node 2)
+  relevantFilePaths: Annotation<string[]>({
     reducer: (current, update) => update ?? current,
     default: () => [],
   }),
 
-  // virtual repo snapshot
+  // File contents for planning (Node 3)
+  fileContents: Annotation<Record<string, string>>({
+    reducer: (current, update) => ({ ...current, ...update }),
+    default: () => ({}),
+  }),
+
+  // Plan steps (Node 3)
+  planSteps: Annotation<PlanStep[]>({
+    reducer: (current, update) => update ?? current,
+    default: () => [],
+  }),
+
+  // Current step being executed (Node 4)
+  currentStep: Annotation<number>({
+    reducer: (current, update) => update ?? current,
+    default: () => 0,
+  }),
+
+  // Modified files (working tree)
   workingTree: Annotation<Record<string, string>>({
     reducer: (current, update) => ({ ...current, ...update }),
     default: () => ({}),
+  }),
+
+  // Completion flag
+  completed: Annotation<boolean>({
+    reducer: (current, update) => update ?? current,
+    default: () => false,
   }),
 });
 
