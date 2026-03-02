@@ -1,194 +1,130 @@
 # SWE LangGraph Agent
 
-A multi-agent system for automated software engineering tasks using LangGraph and Ollama.
+A LangGraph-based multi-agent system for automated software engineering tasks using Ollama and structured outputs.
 
 ## Architecture
 
-The agent consists of three specialized agents working in sequence:
+The agent uses a 4-node workflow with LangGraph:
 
-### 1. 🔍 Search Agent
-- **Input**: Issue description, file index, repo map
-- **Process**: 
-  - Breaks down the issue into multiple search queries
-  - Analyzes the codebase structure
-  - Identifies relevant files
-- **Output**: List of relevant file paths and search queries
+```
+START → Query Breakdown → Search → Planning → Coding → (loop) → END
+                                                  ↑          |
+                                                  └──────────┘
+```
 
-### 2. 📋 Planning Agent
-- **Input**: Issue, relevant files with content, file index, repo map
-- **Process**:
-  - Analyzes the issue and relevant files
-  - Creates a sequential implementation plan
-  - Each step modifies EXACTLY ONE file
-- **Output**: Step-by-step plan with file associations
+### Node 1: Query Breakdown
+- **Input**: User query
+- **Output**: 3-4 focused subqueries
+- **LLM**: ChatOllama with Zod structured output
+- **Purpose**: Breaks down complex queries into searchable subqueries
 
-### 3. 💻 Coding Agent
-- **Input**: Plan steps, original files, working tree context
-- **Process**:
-  - Executes each step sequentially
-  - Reads the target file
-  - Generates complete new file content (not diffs)
-  - Writes to disk and updates working tree
-- **Output**: Modified codebase with all changes applied
+### Node 2: Search Agent
+- **Input**: Subqueries, index file, architecture map
+- **Output**: List of relevant file paths  
+- **LLM**: ChatOllama with Zod structured output
+- **Purpose**: Finds files relevant to the query using codebase index
 
-## State Structure
+### Node 3: Planning Agent
+- **Input**: Relevant files, user query
+- **Output**: Step-by-step implementation plan
+- **LLM**: ChatOllama with Zod structured output
+- **Purpose**: Creates detailed plan with file-specific steps
+
+### Node 4: Coding Agent (Conditional Loop)
+- **Input**: Current step, file contents, plan context
+- **Output**: Modified file content, updated working tree
+- **LLM**: ChatOllama with Zod structured output
+- **Purpose**: Executes one step at a time, loops until all steps complete
+
+## State Management
+
+The agent uses LangGraph's state annotation system:
 
 ```typescript
 {
-  // Task info
-  repoId: string
-  repoPath: string
-  issue: string
-
-  // Knowledge (file paths)
-  fileIndexPath: string   // path to file-index.json
-  repoMapPath: string     // path to repo-map.json
-
-  // Produced by agents
-  searchQueries: string[]
-  relevantFiles: string[]
-  plan: string[]
-  codeSteps: CodeStep[]
-
-  // Virtual repo snapshot (accumulates changes)
-  workingTree: Record<string, string>
+  query: string,                           // User's request
+  repoPath: string,                        // Path to repository
+  indexFilePath: string,                   // Path to index.json
+  mapFilePath: string,                     // Path to architecture.json
+  
+  subqueries: string[],                    // Node 1 output
+  relevantFilePaths: string[],             // Node 2 output
+  fileContents: Record<string, string>,    // Node 3 - files read
+  planSteps: PlanStep[],                   // Node 3 output
+  
+  currentStep: number,                     // Node 4 - current step index
+  workingTree: Record<string, string>,     // Node 4 - modified files
+  completed: boolean,                      // Flag for completion
 }
 ```
+
+## Features
+
+- ✅ **LangGraph Workflow**: Proper graph-based execution flow
+- ✅ **ChatOllama Integration**: Uses @langchain/ollama for LLM calls
+- ✅ **Zod Structured Outputs**: Type-safe LLM responses with `.withStructuredOutput()`
+- ✅ **Conditional Looping**: Coding node loops until all steps complete
+- ✅ **State Persistence**: Working tree tracks all modifications
+- ✅ **Incremental Execution**: One step at a time for reliability
 
 ## Usage
 
 ```typescript
-import { graph, AgentState } from './lib/agents/swe-langgraph';
+import { graph } from './lib/agents/swe-langgraph';
 
-// Initialize state
-const initialState: AgentState = {
-  repoId: "my-repo",
-  repoPath: "/path/to/repo",
-  issue: "Add email validation to user registration",
-  fileIndexPath: "/path/to/file-index.json",
-  repoMapPath: "/path/to/repo-map.json",
-  searchQueries: [],
-  relevantFiles: [],
-  plan: [],
-  codeSteps: [],
-  workingTree: {},
+const initialState = {
+  query: 'Add a dark mode toggle to the app',
+  repoPath: '/path/to/repo',
+  indexFilePath: '/path/to/repo/.codebase-index/index.json',
+  mapFilePath: '/path/to/repo/.codebase-index/architecture.json',
 };
 
-// Run the agent
 const result = await graph.invoke(initialState);
 
-console.log("Modified files:", Object.keys(result.workingTree));
-```
-
-## File Structure
-
-```
-lib/agents/swe-langgraph/
-├── graph.ts              # Main LangGraph definition
-├── types.ts              # State and type definitions
-├── index.ts              # Public exports
-├── nodes/                # Agent node implementations
-│   ├── search-agent.ts   # Search agent
-│   ├── planning-agent.ts # Planning agent
-│   ├── coding-agent.ts   # Coding agent
-│   └── index.ts
-├── functions/            # Utility functions
-│   ├── file-utils.ts     # File operations
-│   ├── llm-utils.ts      # LLM helpers
-│   └── index.ts
-└── prompts/              # System prompts for each agent
-    ├── search.ts
-    ├── planning.ts
-    ├── coding.ts
-    └── index.ts
+// Access results
+console.log('Modified files:', Object.keys(result.workingTree));
+console.log('Steps completed:', result.planSteps.filter(s => s.completed).length);
 ```
 
 ## Requirements
 
-- Node.js 18+
-- Ollama running locally (`http://localhost:11434`)
-- LangGraph dependencies:
-  ```bash
-  npm install @langchain/langgraph @langchain/ollama
-  ```
+1. **Ollama**: Running locally at `http://localhost:11434`
+2. **Model**: `llama3.2` (or configure different model)
+3. **Index Files**: Repository must be indexed first using file-indexing agent
+4. **Map File**: Architecture map must be generated using repo-mapping agent
 
-## Model Configuration
+## Step-by-Step Flow
 
-By default, the agent uses `llama3.1` from Ollama. You can configure this in the `createLLM()` function in `functions/llm-utils.ts`.
+1. **User sends query** → Agent starts
+2. **Query Breakdown Node**: Generates 3-4 subqueries
+3. **Search Node**: Finds relevant files from index
+4. **Planning Node**: 
+   - Opens all relevant files
+   - Creates JSON of file contents
+   - LLM generates step-by-step plan
+5. **Coding Node** (loops):
+   - Takes current step
+   - Opens target file
+   - Sends file + context to LLM
+   - LLM returns complete new file
+   - Writes file to disk
+   - Updates working tree
+   - Moves to next step
+   - Repeats until all steps done
+6. **Complete** → Returns final state with all modifications
 
-Recommended models:
-- `llama3.1` - Good balance of speed and quality
-- `codellama` - Optimized for code generation
-- `deepseek-coder` - Specialized for coding tasks
+## Example
 
-## Key Features
+See `example.ts` for a complete working example.
 
-- ✅ **Modular Architecture**: Separate concerns (search, planning, coding)
-- ✅ **Sequential Execution**: One file at a time for safety
-- ✅ **Context Accumulation**: Working tree provides context of all changes
-- ✅ **Full File Generation**: No complex diff merging
-- ✅ **Type Safety**: Full TypeScript support
-- ✅ **Local LLM**: Privacy-focused using Ollama
-- ✅ **Structured Output**: JSON-based agent communication
-
-## Example Flow
-
-```
-Issue: "Add email validation to user registration"
-
-1. Search Agent:
-   - Queries: ["user registration", "validation", "email field"]
-   - Files: ["src/routes/auth.ts", "src/models/user.ts", "src/utils/validation.ts"]
-
-2. Planning Agent:
-   - Step 1: Create email validation function in src/utils/validation.ts
-   - Step 2: Update User model in src/models/user.ts
-   - Step 3: Add validation to registration handler in src/routes/auth.ts
-
-3. Coding Agent:
-   - Executes Step 1 → generates validation.ts
-   - Executes Step 2 → generates user.ts (with context from Step 1)
-   - Executes Step 3 → generates auth.ts (with context from Steps 1 & 2)
-
-Result: Three files modified, all changes consistent and working together
+```bash
+# Run the example
+npx tsx lib/agents/swe-langgraph/example.ts
 ```
 
-## Error Handling
+## Technologies
 
-Each agent includes error handling and logging. If an agent fails:
-- Error is logged to console
-- Exception is thrown (can be caught by caller)
-- State up to that point is preserved
-
-## Customization
-
-### Change LLM Model
-Edit `functions/llm-utils.ts`:
-```typescript
-export function createLLM(model: string = "codellama", temperature: number = 0.7)
-```
-
-### Modify Prompts
-Edit files in `prompts/` directory to customize agent behavior.
-
-### Add New Agents
-1. Create new node in `nodes/`
-2. Add prompt in `prompts/`
-3. Update `graph.ts` to include new node in workflow
-
-## Limitations
-
-- Requires local Ollama installation
-- Sequential processing (can be slow for large changes)
-- LLM quality dependent on model choice
-- No built-in test execution or validation
-- No rollback mechanism (consider using git)
-
-## Future Enhancements
-
-- [ ] Parallel file processing where possible
-- [ ] Test generation and execution
-- [ ] Code review agent
-- [ ] Interactive approval for each step
-- [ ] Integration with git for automatic commits
-- [ ] Support for remote LLM APIs
+- **LangGraph**: Workflow orchestration
+- **@langchain/ollama**: LLM integration  
+- **Zod**: Schema validation and structured outputs
+- **TypeScript**: Type safety throughout
