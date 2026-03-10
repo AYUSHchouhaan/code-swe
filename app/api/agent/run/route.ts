@@ -1,14 +1,17 @@
 import { NextRequest } from 'next/server';
 import path from 'path';
-import { graph } from '@/lib/agents/swe-langgraph';
+import { plannerGraph, programmerGraph, generateCodebaseTree } from '@/lib/agents/swe-langgraph';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/agent/run
- * Runs the SWE agent with streaming updates using LangGraph streamMode: "updates"
+ *
+ * Runs Planner → Programmer agents in sequence with SSE streaming.
  * Request body: { query: string, repoName: string }
+ *
+ * SSE event format: data: { type, node?, message, data? }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -23,134 +26,103 @@ export async function POST(request: NextRequest) {
     }
 
     const repoPath = path.join(process.cwd(), 'public', 'downloads', repoName);
-    const indexFilePath = path.join(repoPath, '.codebase-index', 'index.json');
-    const mapFilePath = path.join(repoPath, '.codebase-index', 'architecture.json');
-
-    // Create a streaming response
     const encoder = new TextEncoder();
-    
+
     const stream = new ReadableStream({
       async start(controller) {
-        // Helper function to send SSE updates
-        const sendUpdate = (data: any) => {
-          const message = `data: ${JSON.stringify(data)}\n\n`;
-          controller.enqueue(encoder.encode(message));
+        const send = (data: object) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         };
 
         try {
-          sendUpdate({
-            type: 'start',
-            message: '🚀 Starting SWE Agent...',
+          send({ type: 'start', message: '🚀 Starting SWE Agent...' });
+
+          // ─────────────────────────────────────────────────
+          // PHASE 1 — Planner Agent
+          // ─────────────────────────────────────────────────
+          send({ type: 'phase', message: '🗺️  Phase 1: Planning...' });
+
+          // Compute initial codebase tree before running agents
+          const codebaseTree = await generateCodebaseTree(repoPath);
+
+          const plannerInputs = { query, repoPath, codebaseTree };
+          const finalPlanner = await plannerGraph.invoke(plannerInputs);
+
+          const plan: any[] = finalPlanner.plan ?? [];
+          const notes: string = finalPlanner.notes ?? '';
+          const finalCodebaseTree: string = finalPlanner.codebaseTree ?? codebaseTree;
+
+          if (!plan.length) {
+            send({ type: 'error', message: '❌ Planner produced no steps. Aborting.' });
+            controller.close();
+            return;
+          }
+
+          send({
+            type: 'result',
+            node: 'generate-plan',
+            message: `📋 Plan ready — ${plan.length} step(s)`,
+            data: { plan },
           });
 
-          // Prepare initial state
-          const inputs = {
-            query,
-            repoPath,
-            indexFilePath,
-            mapFilePath,
-          };
+          send({
+            type: 'result',
+            node: 'generate-notes',
+            message: '📝 Context notes captured',
+            data: { notes },
+          });
 
-          // Stream using LangGraph with streamMode: "updates"
-          for await (const chunk of await graph.stream(inputs, {
-            streamMode: "updates",
+          // ─────────────────────────────────────────────────
+          // PHASE 2 — Programmer Agent
+          // ─────────────────────────────────────────────────
+          send({ type: 'phase', message: '💻 Phase 2: Implementing changes...' });
+
+          const programmerInputs = { query, repoPath, plan, notes, codebaseTree: finalCodebaseTree };
+
+          for await (const chunk of await programmerGraph.stream(programmerInputs, {
+            streamMode: 'updates',
           })) {
-            // chunk is an object with node name as key
             const nodeName = Object.keys(chunk)[0];
-            const nodeUpdate = (chunk as any)[nodeName];
+            const update = (chunk as any)[nodeName];
 
-            // Send node-specific updates
-            if (nodeName === 'query-breakdown' && nodeUpdate.subqueries) {
-              sendUpdate({
+            if (nodeName === 'generate-action') {
+              send({
                 type: 'node',
-                node: 'query-breakdown',
-                message: `📝 Breaking down query...`,
+                node: nodeName,
+                message: '🔍 Analyzing and deciding next action...',
               });
-              sendUpdate({
-                type: 'result',
-                node: 'query-breakdown',
-                message: `✓ Generated ${nodeUpdate.subqueries.length} subqueries`,
-                data: { subqueries: nodeUpdate.subqueries },
-              });
-            } 
-            
-            else if (nodeName === 'search-agent' && nodeUpdate.relevantFilePaths) {
-              sendUpdate({
+            } else if (nodeName === 'take-action') {
+              send({
                 type: 'node',
-                node: 'search-agent',
-                message: `🔍 Searching for relevant files...`,
+                node: nodeName,
+                message: '⚙️ Executing tool...',
               });
-              sendUpdate({
-                type: 'result',
-                node: 'search-agent',
-                message: `✓ Found ${nodeUpdate.relevantFilePaths.length} relevant files`,
-                data: { files: nodeUpdate.relevantFilePaths },
+            } else if (nodeName === 'complete-task') {
+              const completedCount = (update.plan ?? plan).filter((t: any) => t.completed).length;
+              send({
+                type: 'step',
+                node: nodeName,
+                message: `✅ Task completed (${completedCount}/${plan.length})`,
+                data: { plan: update.plan },
               });
-            } 
-            
-            else if (nodeName === 'planning-agent' && nodeUpdate.planSteps) {
-              sendUpdate({
-                type: 'node',
-                node: 'planning-agent',
-                message: `📋 Creating implementation plan...`,
+            } else if (nodeName === 'end-conclusion') {
+              send({
+                type: 'complete',
+                node: nodeName,
+                message: '🎉 All tasks complete!',
+                data: { summary: update.summary },
               });
-              sendUpdate({
-                type: 'result',
-                node: 'planning-agent',
-                message: `✓ Created plan with ${nodeUpdate.planSteps.length} steps`,
-                data: { 
-                  steps: nodeUpdate.planSteps.map((s: any) => ({
-                    number: s.stepNumber,
-                    description: s.description,
-                    file: s.filePath,
-                    action: s.action,
-                  }))
-                },
-              });
-            } 
-            
-            else if (nodeName === 'coding-agent') {
-              const currentStep = nodeUpdate.currentStep;
-              const planSteps = nodeUpdate.planSteps || [];
-              const totalSteps = planSteps.length;
-              
-              if (currentStep > 0 && currentStep <= totalSteps) {
-                const step = planSteps[currentStep - 1];
-                sendUpdate({
-                  type: 'step',
-                  node: 'coding-agent',
-                  message: `💻 Step ${currentStep}/${totalSteps}: ${step.description}`,
-                  data: { 
-                    step: currentStep, 
-                    total: totalSteps,
-                    file: step.filePath,
-                    action: step.action,
-                  },
-                });
-              }
-
-              // Check if completed
-              if (nodeUpdate.completed) {
-                const modifiedFiles = Object.keys(nodeUpdate.workingTree || {});
-                sendUpdate({
-                  type: 'complete',
-                  message: `✅ All ${totalSteps} steps completed!`,
-                  data: {
-                    modifiedFiles,
-                    totalSteps,
-                  },
-                });
-              }
             }
           }
 
-          controller.close();
+          send({ type: 'done', message: '🎉 Agent finished successfully.' });
         } catch (error) {
-          console.error('Error in agent execution:', error);
-          sendUpdate({
+          console.error('Agent error:', error);
+          send({
             type: 'error',
             message: `❌ Error: ${error instanceof Error ? error.message : String(error)}`,
           });
+        } finally {
           controller.close();
         }
       },
@@ -160,7 +132,7 @@ export async function POST(request: NextRequest) {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
       },
     });
   } catch (error) {
