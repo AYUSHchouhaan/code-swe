@@ -27,14 +27,9 @@ export interface DownloadResult {
 export async function downloadRepository(
   options: DownloadRepoOptions
 ): Promise<DownloadResult> {
-  const {
-    owner,
-    repo,
-    branch,
-    ref,
-    token,
-    destinationPath,
-  } = options;
+
+
+  const {owner, repo, branch, ref, token, destinationPath} = options;
 
   // Determine the ref to download (priority: ref > branch > default)
   // Filter out empty strings

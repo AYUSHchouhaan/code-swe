@@ -303,13 +303,13 @@ export default function DownloadRepoPage() {
           </ul>
         </div>
 
-        {/* Navigation to Index Page */}
+        {/* Navigation to Agent Page */}
         <div className="mt-6 text-center">
           <button
-            onClick={() => router.push("/index-repo")}
+            onClick={() => router.push("/agent")}
             className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg shadow-lg transition-all duration-300 hover:shadow-xl transform hover:scale-105"
           >
-            📚 Index Downloaded Repositories →
+            🤖 Open SWE Agent →
           </button>
         </div>
       </main>
