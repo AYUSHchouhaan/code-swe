@@ -76,6 +76,8 @@ export default function AgentChatPage() {
               // Add agent message for each update
               if (data.type === 'start') {
                 addMessage('agent', data.message);
+              } else if (data.type === 'phase') {
+                addMessage('agent', data.message);
               } else if (data.type === 'node') {
                 addMessage('agent', data.message);
               } else if (data.type === 'result') {
@@ -84,6 +86,8 @@ export default function AgentChatPage() {
                 addMessage('agent', data.message, data.data);
               } else if (data.type === 'complete') {
                 addMessage('agent', data.message, data.data);
+              } else if (data.type === 'done') {
+                addMessage('agent', data.message);
               } else if (data.type === 'error') {
                 addMessage('agent', data.message);
               }
