@@ -1,5 +1,5 @@
 import { ToolMessage, AIMessage } from '@langchain/core/messages';
-import { createGrepTool, createReadTool, createEditTool, generateCodebaseTree } from '../../tools';
+import { createGrepTool, createReadTool, createEditTool, createNewFileTool, generateCodebaseTree } from '../../tools';
 import type { ProgrammerState } from '../types';
 
 /**
@@ -16,12 +16,14 @@ export async function takeActionNode(
   const grepTool = createGrepTool(state.repoPath);
   const readTool = createReadTool(state.repoPath);
   const editTool = createEditTool(state.repoPath);
+  const createFileTool = createNewFileTool(state.repoPath);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toolMap: Record<string, any> = {
     grep: grepTool,
     read: readTool,
     edit: editTool,
+    create_file: createFileTool,
   };
 
   // Find the last AI message with tool calls
@@ -58,12 +60,12 @@ export async function takeActionNode(
     content: result,
   });
 
-  // If the edit tool created a new file, recalculate the codebase tree
-  if (name === 'edit' && result.startsWith('Created new file')) {
+  // Recalculate the codebase tree after a new file is created
+  if (name === 'create_file' && result.startsWith('Created new file')) {
     console.log('  Recalculating codebase tree after new file creation...');
     const updatedTree = await generateCodebaseTree(state.repoPath);
-    return { messages: [toolMsg], codebaseTree: updatedTree };
+    return { messages: [toolMsg], codebaseTree: updatedTree, taskActionsCount: state.taskActionsCount + 1 };
   }
 
-  return { messages: [toolMsg] };
+  return { messages: [toolMsg], taskActionsCount: state.taskActionsCount + 1 };
 }

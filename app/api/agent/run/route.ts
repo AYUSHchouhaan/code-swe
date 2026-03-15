@@ -46,7 +46,109 @@ export async function POST(request: NextRequest) {
           const codebaseTree = await generateCodebaseTree(repoPath);
 
           const plannerInputs = { query, repoPath, codebaseTree };
-          const finalPlanner = await plannerGraph.invoke(plannerInputs);
+          
+          let finalPlanner: any = {};
+          
+          // Stream planner execution
+          for await (const chunk of await plannerGraph.stream(plannerInputs, {
+            streamMode: 'updates',
+          })) {
+            const nodeName = Object.keys(chunk)[0];
+            const update = (chunk as any)[nodeName];
+            
+            // Store the latest state
+            finalPlanner = { ...finalPlanner, ...update };
+
+            if (nodeName === 'generate-plan-context-action') {
+              // Extract tool call details from the last AI message
+              const messages = update.messages || [];
+              const lastAIMsg = messages[messages.length - 1];
+              
+              if (lastAIMsg?.tool_calls && lastAIMsg.tool_calls.length > 0) {
+                const toolCall = lastAIMsg.tool_calls[0];
+                const toolName = toolCall.name;
+                const args = toolCall.args || {};
+                
+                if (toolName === 'grep') {
+                  send({
+                    type: 'node',
+                    node: nodeName,
+                    message: `🔍 Searching for: "${args.query}"`,
+                  });
+                } else if (toolName === 'read') {
+                  send({
+                    type: 'node',
+                    node: nodeName,
+                    message: `📖 Reading: ${args.filePath}`,
+                  });
+                } else if (toolName === 'complete_planning') {
+                  send({
+                    type: 'node',
+                    node: nodeName,
+                    message: `✅ Context gathering complete — moving to planning`,
+                  });
+                }
+              } else if (lastAIMsg) {
+                // Plain-text response — reasoning step; stream content to frontend
+                const reasoningContent =
+                  typeof lastAIMsg.content === 'string'
+                    ? lastAIMsg.content
+                    : JSON.stringify(lastAIMsg.content);
+                send({
+                  type: 'reasoning',
+                  node: 'reasoning-thinking',
+                  message: '💭 Thinking...',
+                  data: { content: reasoningContent },
+                });
+              } else {
+                send({
+                  type: 'node',
+                  node: nodeName,
+                  message: '🔍 Gathering codebase context...',
+                });
+              }
+            } else if (nodeName === 'reasoning-thinking') {
+              // Node itself returns {} — the content was already sent above.
+              // Emit a lightweight indicator so the frontend knows the thinking step ran.
+              send({
+                type: 'reasoning',
+                node: nodeName,
+                message: '💭 Processing reasoning...',
+              });
+            } else if (nodeName === 'take-action-context') {
+              // Extract tool result from the ToolMessage
+              const messages = update.messages || [];
+              const toolMsg = messages[messages.length - 1];
+              
+              if (toolMsg?.content) {
+                const content = String(toolMsg.content);
+                const preview = content.length > 100 ? content.slice(0, 100) + '...' : content;
+                send({
+                  type: 'node',
+                  node: nodeName,
+                  message: `✅ Result: ${preview}`,
+                });
+              } else {
+                send({
+                  type: 'node',
+                  node: nodeName,
+                  message: '📖 Tool executed',
+                });
+              }
+            } else if (nodeName === 'generate-plan') {
+              send({
+                type: 'node',
+                node: nodeName,
+                message: '📋 Creating implementation plan...',
+              });
+            } else if (nodeName === 'generate-notes') {
+              send({
+                type: 'node',
+                node: nodeName,
+                message: '📝 Summarizing context...',
+              });
+            }
+          }
 
           const plan: any[] = finalPlanner.plan ?? [];
           const notes: string = finalPlanner.notes ?? '';
@@ -86,23 +188,73 @@ export async function POST(request: NextRequest) {
             const update = (chunk as any)[nodeName];
 
             if (nodeName === 'generate-action') {
-              send({
-                type: 'node',
-                node: nodeName,
-                message: '🔍 Analyzing and deciding next action...',
-              });
+              // Extract tool call details from the last AI message
+              const messages = update.messages || [];
+              const lastAIMsg = messages[messages.length - 1];
+              
+              if (lastAIMsg?.tool_calls && lastAIMsg.tool_calls.length > 0) {
+                const toolCall = lastAIMsg.tool_calls[0];
+                const toolName = toolCall.name;
+                const args = toolCall.args || {};
+                
+                if (toolName === 'grep') {
+                  send({
+                    type: 'node',
+                    node: nodeName,
+                    message: `🔍 Searching for: "${args.query}"`,
+                  });
+                } else if (toolName === 'read') {
+                  send({
+                    type: 'node',
+                    node: nodeName,
+                    message: `📖 Reading: ${args.filePath}`,
+                  });
+                } else if (toolName === 'edit') {
+                  send({
+                    type: 'node',
+                    node: nodeName,
+                    message: `✏️ Editing: ${args.filePath}`,
+                  });
+                }
+              } else {
+                send({
+                  type: 'node',
+                  node: nodeName,
+                  message: '🔍 Analyzing task...',
+                });
+              }
             } else if (nodeName === 'take-action') {
-              send({
-                type: 'node',
-                node: nodeName,
-                message: '⚙️ Executing tool...',
-              });
+              // Extract tool result from the ToolMessage
+              const messages = update.messages || [];
+              const toolMsg = messages[messages.length - 1];
+              
+              if (toolMsg?.content) {
+                const content = String(toolMsg.content);
+                const preview = content.length > 150 ? content.slice(0, 150) + '...' : content;
+                send({
+                  type: 'node',
+                  node: nodeName,
+                  message: `✅ ${preview}`,
+                });
+              } else {
+                send({
+                  type: 'node',
+                  node: nodeName,
+                  message: '⚙️ Tool executed',
+                });
+              }
             } else if (nodeName === 'complete-task') {
               const completedCount = (update.plan ?? plan).filter((t: any) => t.completed).length;
+              
+              // Extract AI summary from messages
+              const messages = update.messages || [];
+              const summaryMsg = messages[messages.length - 1];
+              const summary = summaryMsg?.content ? String(summaryMsg.content) : '';
+              
               send({
                 type: 'step',
                 node: nodeName,
-                message: `✅ Task completed (${completedCount}/${plan.length})`,
+                message: `✅ Task ${completedCount}/${plan.length} complete: ${summary}`,
                 data: { plan: update.plan },
               });
             } else if (nodeName === 'end-conclusion') {

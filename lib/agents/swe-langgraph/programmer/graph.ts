@@ -6,12 +6,14 @@ import {
   takeActionNode,
   completeTaskNode,
   endConclusionNode,
+  reasoningThinkingNode,
 } from './nodes';
 
 /**
  * Conditional edge from generate-action:
- * - If tool call → take-action
- * - If no tool call → complete-task
+ * - mark_task_complete tool call → complete-task
+ * - other tool call              → take-action
+ * - plain text (reasoning)       → reasoning-thinking
  */
 function routeAfterGenerateAction(state: ProgrammerState): string {
   const lastAI = [...state.messages].reverse().find((m) => m.getType() === 'ai') as
@@ -19,11 +21,18 @@ function routeAfterGenerateAction(state: ProgrammerState): string {
     | undefined;
 
   if (lastAI?.tool_calls && lastAI.tool_calls.length > 0) {
-    console.log('  → routing to take-action');
+    const toolName = lastAI.tool_calls[0].name;
+    if (toolName === 'mark_task_complete') {
+      console.log('  → routing to complete-task (mark_task_complete called)');
+      return 'complete-task';
+    }
+    console.log(`  → routing to take-action (tool: ${toolName})`);
     return 'take-action';
   }
-  console.log('  → routing to complete-task');
-  return 'complete-task';
+
+  // No tool call — model is reasoning/thinking
+  console.log('  → routing to reasoning-thinking');
+  return 'reasoning-thinking';
 }
 
 /**
@@ -45,15 +54,19 @@ const workflow = new StateGraph(ProgrammerStateAnnotation)
   .addNode('generate-action', generateActionNode)
   .addNode('take-action', takeActionNode)
   .addNode('complete-task', completeTaskNode)
+  .addNode('reasoning-thinking', reasoningThinkingNode)
   .addNode('end-conclusion', endConclusionNode)
   // ── edges ──
   .addEdge(START, 'generate-action')
   .addConditionalEdges('generate-action', routeAfterGenerateAction, {
     'take-action': 'take-action',
     'complete-task': 'complete-task',
+    'reasoning-thinking': 'reasoning-thinking',
   })
-  // After executing tool, loop back to generate-action
+  // After executing a tool, loop back to generate-action
   .addEdge('take-action', 'generate-action')
+  // After reasoning, loop back to generate-action
+  .addEdge('reasoning-thinking', 'generate-action')
   // After completing a task, check if more remain
   .addConditionalEdges('complete-task', routeAfterCompleteTask, {
     'generate-action': 'generate-action',

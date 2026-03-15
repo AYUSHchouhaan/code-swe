@@ -13,9 +13,11 @@ export async function endConclusionNode(
   console.log('\n=== PROGRAMMER NODE: end-conclusion ===');
 
   const llm = new ChatOllama({
-    model: 'qwen2.5-coder:7b',
+    model: 'qwen3-coder:480b-cloud',
     temperature: 0.1,
     baseUrl: 'http://localhost:11434',
+    numCtx: 131072,
+    numPredict: 8192,
   });
 
   const planOverview = state.plan

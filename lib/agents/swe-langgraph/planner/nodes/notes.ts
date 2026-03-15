@@ -12,9 +12,11 @@ export async function notesNode(state: PlannerState): Promise<Partial<PlannerSta
   console.log('\n=== PLANNER NODE: notes ===');
 
   const llm = new ChatOllama({
-    model: 'qwen2.5-coder:7b',
+    model: 'qwen3-coder:480b-cloud',
     temperature: 0.1,
     baseUrl: 'http://localhost:11434',
+    numCtx: 131072,
+    numPredict: 8192,
   });
 
   const contextSummary = state.messages
@@ -32,11 +34,13 @@ export async function notesNode(state: PlannerState): Promise<Partial<PlannerSta
   const response = await llm.invoke([
     new SystemMessage(
       `You are a technical writer summarising a code-planning session for a programmer.
-Produce a compact paragraph (3-6 sentences) noting:
+Produce a compact paragraph (30-50 sentences) noting:
 - What the user wants to achieve
 - Which files are relevant and why
 - Key observations from the codebase analysis
-- The overall implementation approach from the plan`
+- The overall implementation approach from the plan how the codebase work
+- what should be include in the notes so that programmer graph can understand the context and execute the plan effectively
+- what the important files and relationships between files that should be included in the notes for programmer graph to understand the codebase structure and execute the plan effectively`
     ),
     new HumanMessage(
       `User Query: "${state.query}"
