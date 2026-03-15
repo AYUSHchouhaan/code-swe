@@ -34,7 +34,7 @@ export function createGrepTool(repoPath: string) {
             '-e', query,              // supports "word1|word2" alternation natively
             repoPath,
           ],
-          { maxBuffer: 1024 * 1024 }
+          { maxBuffer: 10 * 1024 * 1024 }
         );
 
         const allFiles = stdout
