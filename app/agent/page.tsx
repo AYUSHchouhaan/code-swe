@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import ChatHeader from '@/components/chat/ChatHeader';
-import ChatMessages from '@/components/chat/ChatMessages';
-import ChatInput from '@/components/chat/ChatInput';
 import { Message } from '@/components/chat/ChatMessage';
+import ChatSection from '@/components/chat/ChatSection';
+import CodeEditor from '@/components/editor/CodeEditor';
 
 export default function AgentChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -12,12 +11,22 @@ export default function AgentChatPage() {
   const [repoName, setRepoName] = useState('');
   const [isRunning, setIsRunning] = useState(false);
 
-  const addMessage = (role: 'user' | 'agent', content: string, data?: any) => {
+  const addMessage = (
+    role: 'user' | 'agent',
+    content: string,
+    data?: any,
+    type?: string,
+    node?: string,
+    tool?: string,
+  ) => {
     const message: Message = {
       id: Date.now().toString() + Math.random(),
       role,
       content,
       timestamp: new Date(),
+      type,
+      node,
+      tool,
       data,
     };
     setMessages((prev) => [...prev, message]);
@@ -28,8 +37,7 @@ export default function AgentChatPage() {
 
     const userQuery = input.trim();
     const repo = repoName.trim();
-    
-    // Add user message
+
     addMessage('user', userQuery);
     setInput('');
     setIsRunning(true);
@@ -37,13 +45,8 @@ export default function AgentChatPage() {
     try {
       const response = await fetch('/api/agent/run', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: userQuery,
-          repoName: repo,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: userQuery, repoName: repo }),
       });
 
       if (!response.ok) {
@@ -53,15 +56,12 @@ export default function AgentChatPage() {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
-      if (!reader) {
-        throw new Error('No response body');
-      }
+      if (!reader) throw new Error('No response body');
 
       let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
-        
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -72,24 +72,8 @@ export default function AgentChatPage() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
-              // Add agent message for each update
-              if (data.type === 'start') {
-                addMessage('agent', data.message);
-              } else if (data.type === 'phase') {
-                addMessage('agent', data.message);
-              } else if (data.type === 'node') {
-                addMessage('agent', data.message);
-              } else if (data.type === 'result') {
-                addMessage('agent', data.message, data.data);
-              } else if (data.type === 'step') {
-                addMessage('agent', data.message, data.data);
-              } else if (data.type === 'complete') {
-                addMessage('agent', data.message, data.data);
-              } else if (data.type === 'done') {
-                addMessage('agent', data.message);
-              } else if (data.type === 'error') {
-                addMessage('agent', data.message);
+              if (data.message) {
+                addMessage('agent', data.message, data.data, data.type, data.node, data.tool);
               }
             } catch (e) {
               console.error('Error parsing SSE data:', e);
@@ -106,22 +90,24 @@ export default function AgentChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      <ChatHeader 
-        repoName={repoName} 
-        setRepoName={setRepoName} 
-        isRunning={isRunning} 
-      />
-      
-      <ChatMessages messages={messages} />
-      
-      <ChatInput 
-        input={input} 
-        setInput={setInput} 
-        onSend={runAgent} 
-        isRunning={isRunning} 
-        repoName={repoName} 
-      />
+    <div className="flex h-screen overflow-hidden bg-gray-100">
+      {/* Left column — Chat */}
+      <div className="w-105 shrink-0 flex flex-col h-full">
+        <ChatSection
+          messages={messages}
+          input={input}
+          setInput={setInput}
+          repoName={repoName}
+          setRepoName={setRepoName}
+          isRunning={isRunning}
+          onSend={runAgent}
+        />
+      </div>
+
+      {/* Right column — Code Editor */}
+      <div className="flex-1 min-w-0 flex flex-col h-full">
+        <CodeEditor repoName={repoName} />
+      </div>
     </div>
   );
 }
