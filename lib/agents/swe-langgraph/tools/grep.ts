@@ -7,7 +7,7 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Creates a grep tool backed by ripgrep (rg) for fast codebase search.
- * Supports multiple keywords via pipe syntax: "createUser|updateUser"
+ * Supports multiple keywords via pipe syntax: "createUser| "
  * Returns up to 5 unique relative file paths. Skips common build/dep dirs.
  */
 export function createGrepTool(repoPath: string) {

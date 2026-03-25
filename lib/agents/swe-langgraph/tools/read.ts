@@ -1,27 +1,38 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 
 /**
- * Creates a read tool that reads and returns the content of a file.
+ * Creates a read tool that reads up to 4 files in parallel and returns their contents.
  */
 export function createReadTool(repoPath: string) {
   return tool(
-    async ({ filePath }: { filePath: string }) => {
-      try {
-        const fullPath = path.join(repoPath, filePath);
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        return `=== ${filePath} ===\n${content}`;
-      } catch (error) {
-        return `Error reading "${filePath}": ${error instanceof Error ? error.message : String(error)}`;
-      }
+    async ({ filePaths }: { filePaths: string[] }) => {
+      const files = filePaths.slice(0, 4);
+      const results = await Promise.all(
+        files.map(async (filePath) => {
+          try {
+            const fullPath = path.join(repoPath, filePath);
+            const content = await fs.readFile(fullPath, 'utf-8');
+            return `=== ${filePath} ===\n${content}`;
+          } catch (error) {
+            return `=== ${filePath} ===\nError reading file: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        })
+      );
+      return results.join('\n\n');
     },
     {
       name: 'read',
-      description: 'Read the full content of a file. Provide the path relative to the repo root.',
+      description:
+        'Read the full content of 1–4 files in parallel. Only include files that are directly relevant and you think should be read to the task. Max 4 files per call.',
       schema: z.object({
-        filePath: z.string().describe('File path relative to the repo root (e.g. "src/index.ts")'),
+        filePaths: z
+          .array(z.string())
+          .min(1)
+          .max(4)
+          .describe('Array of file paths relative to the repo root (e.g. ["src/index.ts", "src/utils.ts"]). Max 4.'),
       }),
     }
   );
