@@ -1,6 +1,6 @@
 import { ToolMessage } from '@langchain/core/messages';
 import { AIMessage } from '@langchain/core/messages';
-import { createGrepTool, createReadTool } from '../../tools';
+import { createGrepTool, createReadTool, createGlobTool } from '../../tools';
 import type { PlannerState } from '../types';
 
 /**
@@ -16,9 +16,11 @@ export async function takeActionContextNode(
 
   const grepTool = createGrepTool(state.repoPath);
   const readTool = createReadTool(state.repoPath);
+  const globTool = createGlobTool(state.repoPath);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toolMap: Record<string, any> = {
+    glob: globTool,
     grep: grepTool,
     read: readTool,
   };

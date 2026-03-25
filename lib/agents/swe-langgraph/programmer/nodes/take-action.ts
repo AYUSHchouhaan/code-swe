@@ -1,5 +1,5 @@
 import { ToolMessage, AIMessage } from '@langchain/core/messages';
-import { createGrepTool, createReadTool, createEditTool, createNewFileTool, generateCodebaseTree } from '../../tools';
+import { createGrepTool, createReadTool, createEditTool, createNewFileTool, createGlobTool } from '../../tools';
 import type { ProgrammerState } from '../types';
 
 /**
@@ -17,9 +17,11 @@ export async function takeActionNode(
   const readTool = createReadTool(state.repoPath);
   const editTool = createEditTool(state.repoPath);
   const createFileTool = createNewFileTool(state.repoPath);
+  const globTool = createGlobTool(state.repoPath);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toolMap: Record<string, any> = {
+    glob: globTool,
     grep: grepTool,
     read: readTool,
     edit: editTool,
@@ -59,13 +61,6 @@ export async function takeActionNode(
     tool_call_id: id ?? name,
     content: result,
   });
-
-  // Recalculate the codebase tree after a new file is created
-  if (name === 'create_file' && result.startsWith('Created new file')) {
-    console.log('  Recalculating codebase tree after new file creation...');
-    const updatedTree = await generateCodebaseTree(state.repoPath);
-    return { messages: [toolMsg], codebaseTree: updatedTree, taskActionsCount: state.taskActionsCount + 1 };
-  }
 
   return { messages: [toolMsg], taskActionsCount: state.taskActionsCount + 1 };
 }

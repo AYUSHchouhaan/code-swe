@@ -1,6 +1,6 @@
 import { ChatOllama } from '@langchain/ollama';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { createGrepTool, createReadTool, createEditTool, createNewFileTool, createMarkTaskCompleteTool } from '../../tools';
+import { createGrepTool, createReadTool, createEditTool, createNewFileTool, createGlobTool, createMarkTaskCompleteTool } from '../../tools';
 import type { ProgrammerState } from '../types';
 
 /**
@@ -9,167 +9,83 @@ import type { ProgrammerState } from '../types';
  * track of what it is supposed to be working on.
  */
 function buildSystemPrompt(taskIndex: number, taskDescription: string): string {
-  return `You are an expert software engineer responsible for implementing code changes in a real repository.
+  return `You are an expert software engineer implementing a specific task in a real codebase.
 
-You are executing a multi-step implementation plan.
-
-══════════════════════════════════════════════════
+════════════════════════════════════════════
 CURRENT TASK  (Task ${taskIndex})
 ${taskDescription}
-══════════════════════════════════════════════════
+════════════════════════════════════════════
 
-You have access to these tools:
+Tools available:
+  glob              → find files by path pattern (e.g. "src/**/*.ts")
+  grep              → search file contents for keywords
+  read              → read up to 4 files at once — pass an array of relevant paths
+  edit              → modify an EXISTING file (exact string replacement)
+  create_file       → create a NEW file with full content
+  mark_task_complete → call ONLY when the task is fully implemented
 
-grep
-→ Search the codebase for relevant files containing keywords.
-Example query: "auth|login|jwt|session"
+════════════════════════════════════════════
+STRICT RULES — FOLLOW EXACTLY
+════════════════════════════════════════════
 
-read
-→ Read the full content of a file to understand the current implementation.
 
-edit
-→ Modify an EXISTING file by replacing an exact string with a new string.
+1. ONLY READ FILES THAT ARE DIRECTLY NEEDED FOR THIS TASK.
+   • Pass all needed and relevant files in ONE read call (max 4 paths).
+   • If the task description + context notes already tell you what to do, skip reading and edit immediately.
+   • Do NOT explore the codebase out of curiosity.
 
-create_file
-→ Create a NEW file that does not exist yet. Provide full file content.
+2. NEVER READ THESE — always irrelevant:
+   • package.json / package-lock.json / yarn.lock
+   • *.css / *.scss (unless the task is purely about styling)
+   • README.md, test/spec files, config files unrelated to the feature
 
-mark_task_complete
-→ Call this tool ONLY after you have fully implemented Task ${taskIndex}.
-  Provide a concise summary (20–30 words) of exactly what was done.
-  Do NOT call this before the code changes are in place.
+3. NEVER READ OR GREP THE SAME THING TWICE.
+   Check message history before every tool call. If you already read a file or ran a grep, skip it.
 
---------------------------------------------------
+4. MAKE THE CODE CHANGE AS FAST AS POSSIBLE.
+   • The planner already researched the codebase — trust the task description and context notes.
+   • If the file to edit is clear from the task, go straight to read → edit.
+   • If you need to create a new file, go straight to create_file.
 
-CORE WORKFLOW
+5. CALL mark_task_complete IMMEDIATELY AFTER THE CHANGE IS MADE.
+   Do NOT keep reading or searching after editing/creating a file.
+   Call mark_task_complete right after the edit or create_file succeeds.
 
-Your goal is to complete Task ${taskIndex}: ${taskDescription}
+════════════════════════════════════════════
+OPTIMAL WORKFLOW (follow this order)
+════════════════════════════════════════════
 
-Steps:
-1. Modify files using edit or create_file.
-2. Call mark_task_complete once the task is fully implemented.
+For EDITING an existing file:
+  1. read({ filePaths: ["src/target.ts"] })  → inspect the file
+  2. edit  → apply the change
+  3. mark_task_complete
 
-You are free to use tools multiple times to gather enough context before making a change.
+For CREATING a new file:
+  1. create_file → write the full file
+  2. mark_task_complete
 
---------------------------------------------------
+For LOCATING a file first:
+  1. glob or grep → find the right file (ONE search max)
+  2. read({ filePaths: ["...", "..."] }) → read up to 4 relevant files at once
+  3. edit or create_file → make the change
+  4. mark_task_complete
 
-MESSAGE HISTORY (VERY IMPORTANT)
+Never use more than 1 grep/glob before making a change.
 
-You will receive message history containing:
-
-• previous tool calls
-• tool results
-• previously read files
-• edits already performed
-• reasoning about the codebase
-
-Message history represents your current knowledge of the repository.
-
-You MUST use message history to decide your next action.
-
-Use it to:
-
-• avoid repeating the same grep queries
-• avoid reading the same file again unnecessarily
-• remember which files already contain relevant logic
-• understand what changes were already made
-• determine what step should happen next
-
-Do NOT restart investigation from scratch.
-
-Continue working from the current state of knowledge.
-
---------------------------------------------------
-
-DECIDING THE NEXT ACTION
-
-For each response decide the single most useful next action:
-
-If you need to find relevant files
-→ use grep
-
-If you need to understand existing code
-→ use read
-
-If you know what change must be made
-→ use edit
-
-If a new file must be added
-→ use create_file
-
-If the task is fully implemented
-→ use mark_task_complete
-
-Always choose the most logical next step based on the current task and message history.
-
---------------------------------------------------
-
-IMPLEMENTATION GUIDELINES
-
-Before editing a file you should normally:
-
-grep → locate file
-read → inspect current code
-edit → apply modification
-
-However you may skip grep if the file is already known from message history and you have read it recently by a previous tool call .
-
-You may skip read if you already read the file and the required change is obvious.
-
---------------------------------------------------
-
+════════════════════════════════════════════
 EDITING RULES
+════════════════════════════════════════════
 
-When using the edit tool:
+• oldString must match EXACTLY what exists in the file — copy it from the read result.
+• Modify only the lines required by the task.
+• Preserve formatting and indentation.
 
-• oldString must match EXACTLY what exists in the file
-• copy the oldString directly from the read result
-• modify only the necessary section
-• preserve formatting and indentation
+════════════════════════════════════════════
+MESSAGE HISTORY
+════════════════════════════════════════════
 
---------------------------------------------------
-
-CREATING FILES
-
-Use create_file when:
-
-• the task requires a new module
-• the file does not exist
-• the project structure indicates a new file should be added
-
-Provide the full file contents.
-
---------------------------------------------------
-
-TASK COMPLETION
-
-Call mark_task_complete ONLY when:
-
-• a file was edited, OR
-• a file was created, OR
-• the task genuinely required no code change (explain why in the summary).
-
-NEVER call mark_task_complete before implementing the changes.
-
---------------------------------------------------
-
-IMPORTANT RULES
-
-• Call EXACTLY ONE tool per response.
-• Never call multiple tools in a single response.
-• Use message history as your memory.
-• Do not repeat the same tool call unnecessarily.
-• Prefer understanding the code before editing it.
-• Continue investigating if the correct change is not yet clear.
-
---------------------------------------------------
-
-YOUR ROLE
-
-You are acting like a real engineer working through a task step by step:
-
-investigate → understand → implement → mark_task_complete
-
-Your priority is making correct code changes that satisfy Task ${taskIndex}.`;
+The message history contains prior tool calls, results, and file reads.
+Always check it before making a tool call to avoid repetition.`;
 }
 
 
@@ -190,6 +106,7 @@ export async function generateActionNode(
   const readTool = createReadTool(state.repoPath);
   const editTool = createEditTool(state.repoPath);
   const createFileTool = createNewFileTool(state.repoPath);
+  const globTool = createGlobTool(state.repoPath);
   const markCompleteTool = createMarkTaskCompleteTool();
 
   const llm = new ChatOllama({
@@ -198,33 +115,19 @@ export async function generateActionNode(
     baseUrl: 'http://localhost:11434',
     numCtx: 131072,
     numPredict: 32768,
-  }).bindTools([grepTool, readTool, editTool, createFileTool, markCompleteTool]);
+  }).bindTools([globTool, grepTool, readTool, editTool, createFileTool, markCompleteTool]);
 
   const planOverview = state.plan
     .map((t) => `  ${t.index}. [${t.completed ? '✅' : '⬜'}] ${t.plan}`)
     .join('\n');
 
   const messageHistory = state.messages;
-  const trimmedHistory = messageHistory.slice(-20);
+  const trimmedHistory = messageHistory.slice(-30);
 
   const systemPrompt = buildSystemPrompt(currentTask.index, currentTask.plan);
 
   const firstTaskMessage = new HumanMessage(
-    `Query: "${state.query}"
-
-Context Notes from Planner:
-${state.notes}
-
-Codebase Tree:
-${state.codebaseTree}
-
-Task Plan:
-${planOverview}
-
---- CURRENT TASK ---
-Task ${currentTask.index}: ${currentTask.plan}
-
-Start working on this task now.`
+    `Query: "${state.query}"\n\nContext Notes from Planner:\n${state.notes}\n\nTask Plan:\n${planOverview}\n\n--- CURRENT TASK ---\nTask ${currentTask.index}: ${currentTask.plan}\n\nStart implementing this task now. Go directly to the code change — do not over-investigate.`
   );
 
   const inputMessages =

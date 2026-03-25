@@ -18,15 +18,15 @@ import type { PlannerState } from '../types';
 export async function plannerReasoningThinkingNode(
   state: PlannerState
 ): Promise<Partial<PlannerState>> {
-  console.log('\n=== PLANNER NODE: reasoning-thinking ===');
+  // console.log('\n=== PLANNER NODE: reasoning-thinking ===');
 
-  const lastAI = [...state.messages].reverse().find((m) => m.getType() === 'ai') as
-    | AIMessage
-    | undefined;
+  // const lastAI = [...state.messages].reverse().find((m) => m.getType() === 'ai') as
+  //   | AIMessage
+  //   | undefined;
 
   // Content was already logged by generate-plan-context-action.
   // This node exists only to provide a named graph step for routing purposes.
-  void lastAI;
+  // void lastAI;
 
   return {};
 }

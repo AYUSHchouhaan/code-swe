@@ -37,12 +37,6 @@ export const PlannerStateAnnotation = Annotation.Root({
     reducer: (_, update) => update,
     default: () => '',
   }),
-
-  /** Directory tree of the codebase (generated via `tree` command) */
-  codebaseTree: Annotation<string>({
-    reducer: (_, update) => update,
-    default: () => '',
-  }),
 });
 
 export type PlannerState = typeof PlannerStateAnnotation.State;

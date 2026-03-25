@@ -8,4 +8,4 @@ export type { ProgrammerState } from './programmer';
 
 
 // Shared tools
-export { createGrepTool, createReadTool, createEditTool, generateCodebaseTree } from './tools';
+export { createGrepTool, createReadTool, createEditTool, createGlobTool } from './tools';

@@ -23,12 +23,6 @@ export const ProgrammerStateAnnotation = Annotation.Root({
     default: () => '',
   }),
 
-  /** Directory tree of the codebase */
-  codebaseTree: Annotation<string>({
-    reducer: (_, update) => update,
-    default: () => '',
-  }),
-
   /**
    * Internal conversation messages — the main context.
    * HumanMessage, AIMessage (with tool_calls), ToolMessage flow.

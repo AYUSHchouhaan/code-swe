@@ -1,132 +1,87 @@
 import { ChatOllama } from '@langchain/ollama';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { createGrepTool, createReadTool, createCompletePlanningTool } from '../../tools';
+import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { createGrepTool, createReadTool, createGlobTool, createCompletePlanningTool } from '../../tools';
 import type { PlannerState } from '../types';
 
-const SYSTEM_PROMPT = `You are a senior software engineer investigating a codebase to understand a user's request.
+const SYSTEM_PROMPT = `You are a senior software engineer investigating a codebase to plan an implementation.
 
-Your goal is to gather enough context from the codebase to produce base on the query and codebase a correct implementation plan.
+You have four tools:
+- glob              → find files by path pattern (e.g. "src/**/*.ts", "*.js") — use this FIRST
+- grep              → search the codebase for files containing a keyword/pattern
+- read              → read up to 4 files at once by passing an array of paths
+- complete_planning → CALL THIS as soon as you have enough context to write the plan
 
-You have access to these tools:
-- grep              → search the codebase for relevant files
-- read              → read the full content of a file
-- complete_planning → call this ONLY when you have gathered enough context to write the plan
+════════════════════════════════════════════
+STRICT RULES — READ CAREFULLY
+════════════════════════════════════════════
 
-Your job is NOT to solve the task yet. Your job is to understand the codebase based on the query .
+1. EVERY response MUST call exactly one tool (glob, grep, read, or complete_planning).
+   Never respond with pure text or reasoning. If you are thinking, still pick the
+   best next tool call and make it immediately.
 
---------------------------------------------------
+2. USE GLOB FIRST TO DISCOVER FILES.
+   Start by calling glob with up to 4 patterns that match the file types relevant
+   to the query. For example: ["src/**/*.ts", "**/*.tsx", "app/**/*.ts"].
+   This gives you the project structure without reading file contents.
 
-PRIMARY OBJECTIVE
+3. ONLY READ FILES THAT ARE DIRECTLY RELEVANT TO THE USER QUERY.
+   Pass up to 4 relevant file paths in a single read call. Max 1 read call total.
 
-Carefully analyze the user query and explore the codebase to understand:
+4. NEVER READ THESE — they are always irrelevant:
+   - package.json / package-lock.json / yarn.lock
+   - *.css / *.scss files (unless the task is purely about styling)
+   - README.md
+   - test / spec files
+   - lock files or config files unrelated to the feature
 
-• where the relevant logic exists
-• which files implement the feature
-• how components interact
-• where the change or bug likely exists
-• what other files may be affected
+5. NEVER READ THE SAME FILE TWICE.
+   Check the message history before every read. If a file was already read, skip it.
 
-You should gather enough information so that a programmer agent could implement the solution without needing additional exploration.
+6. NEVER RUN THE SAME GLOB OR GREP TWICE.
+   Check the message history before every tool call.
 
---------------------------------------------------
+7. CALL complete_planning AS SOON AS POSSIBLE.
+   Once you know:
+   • which files contain the relevant logic
+   • what data/APIs are available
+   • where the change needs to happen
+   …call complete_planning immediately. Do not keep exploring.
 
-CONTEXT SOURCES
+════════════════════════════════════════════
+EFFICIENT WORKFLOW
+════════════════════════════════════════════
 
-You MUST use all available context:
+Step 1 — Call glob with patterns that match the relevant file types.
+          E.g. ["src/**/*.ts", "app/**/*.tsx"] to see all source files.
+          Pick up to 4 files that look most relevant from the results.
 
-1. The user query
-2. The codebase file tree
-3. The conversation message history
-4. The files you previously read
-5. The results returned by grep searches
+Step 2 — Call read ONCE with all relevant file paths in one array (max 4).
+          e.g. read({ filePaths: ["src/a.ts", "src/b.ts", "app/c.tsx"] })
+          Stop reading after this — you now have enough context.
 
-Message history is extremely important. It contains previously discovered files, reasoning, and context. Use it to decide the next step.
+Step 3 — If something is still unclear, do ONE targeted grep.
+          use the result to pick which file to read next if relevent .
 
-Never ignore previously gathered information.
+Step 4 — Call complete_planning as soon as the picture is clear.
 
---------------------------------------------------
+════════════════════════════════════════════
+WHAT "ENOUGH CONTEXT" MEANS
+════════════════════════════════════════════
 
-EXPLORATION STRATEGY
+You have enough context when you can answer:
+• Which files need to be created or modified?
+• What data exists (API endpoints, props, state)?
+• What is the current structure the new code must integrate with?
 
-Your workflow should look like a real engineer exploring a repository.
+Once you can answer those three questions — call complete_planning immediately.
 
-Typical workflow:
+════════════════════════════════════════════
+complete_planning FORMAT
+════════════════════════════════════════════
 
-1. Use grep to search for relevant concepts related to the user request
-2. Read the most relevant files
-3. Follow references between files
-4. Search for related modules, functions, routes, or components
-5. Expand exploration when necessary
+  complete_planning({ reason: "1–2 sentence summary of what you found" })
 
-Do not stop after reading just one or two files.
-
---------------------------------------------------
-
-SEARCH GUIDELINES
-
-When using grep:
-
-• Use multiple relevant keywords
-• Search for functions, routes, variables, services, or feature names
-• Follow related files discovered during reading
-
-Examples:
-
-auth|login|session
-payment|checkout|stripe
-user|profile|account
-dashboard|stats|analytics
-
-Use new searches as you learn more.
-
---------------------------------------------------
-
-TOOL USAGE RULES
-
-• You may call ONE tool per response.
-• You are free to make MANY tool calls across multiple steps.
-• Do not stop exploration prematurely.
-• Continue gathering context until you clearly understand the code area.
-
-You are NOT restricted to a fixed number of searches.
-
---------------------------------------------------
-
-WHEN TO STOP EXPLORING
-
-Stop exploring only when:
-
-• you understand how the current system works
-• you know which files will need to change
-• you understand dependencies between components
-
-When that point is reached, call complete_planning to signal that context gathering is done and planning can begin.
-
---------------------------------------------------
-
-COMPLETING EXPLORATION
-
-When you have gathered enough context, call:
-
-  complete_planning({ reason: "brief explanation of what you found" })
-
-Do NOT call complete_planning before you have read the relevant files.
-Do NOT continue exploring after calling complete_planning.
-
---------------------------------------------------
-
-You are operating in a multi-step investigation.
-
-The message history contains:
-
-• previous grep searches
-• previously read files
-• reasoning about the codebase
-• discovered relationships between files
-
-You must carefully read the message history before deciding the next tool call.
-
-Never repeat the same search or file read unless necessary.`;
+Do NOT keep exploring after calling complete_planning.`;
 
 export async function generatePlanContextActionNode(
   state: PlannerState
@@ -135,6 +90,7 @@ export async function generatePlanContextActionNode(
 
   const grepTool = createGrepTool(state.repoPath);
   const readTool = createReadTool(state.repoPath);
+  const globTool = createGlobTool(state.repoPath);
   const completePlanningTool = createCompletePlanningTool();
 
   const llm = new ChatOllama({
@@ -143,19 +99,46 @@ export async function generatePlanContextActionNode(
     baseUrl: 'http://localhost:11434',
     numCtx: 131072,
     numPredict: 32768,
-  }).bindTools([grepTool, readTool, completePlanningTool]);
+  }).bindTools([globTool, grepTool, readTool, completePlanningTool]);
 
   const messageHistory = state.messages;
-  const trimmedHistory = messageHistory.slice(-20);
+
+  // Count consecutive no-tool-call responses to detect empty reasoning loops
+  let emptyReasoningStreak = 0;
+  for (let i = messageHistory.length - 1; i >= 0; i--) {
+    const msg = messageHistory[i];
+    if (msg.getType() === 'ai') {
+      const ai = msg as AIMessage;
+      if (!ai.tool_calls || ai.tool_calls.length === 0) {
+        emptyReasoningStreak++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Hard-break: if the model has produced 2+ empty reasoning responses in a row,
+  // inject a strong reminder so it makes a tool call on the next turn.
+  const loopWarning =
+    emptyReasoningStreak >= 2
+      ? '\n\n⚠️  IMPORTANT: You have produced multiple responses with no tool call. ' +
+        'You MUST call a tool right now — either read a relevant file, run a grep, ' +
+        'or call complete_planning. Do NOT respond with text only.'
+      : '';
 
   const firstMessage = new HumanMessage(
-    `User query: "${state.query}"\n\nCodebase structure:\n${state.codebaseTree}\n\nPlease start gathering context about the codebase to understand what needs to be changed.`
+    `User query: "${state.query}"\n\n` +
+    `Start by calling glob with patterns that match the relevant file types for this query. ` +
+    `Then read the most relevant files (max 5), then call complete_planning.${loopWarning}`
   );
+
+  // Keep history lean — only last 30 messages to avoid context bloat
+  const trimmedHistory = messageHistory.slice(-30);
 
   const inputMessages =
     messageHistory.length === 0
       ? [new SystemMessage(SYSTEM_PROMPT), firstMessage]
-      : [new SystemMessage(SYSTEM_PROMPT), ...trimmedHistory];
+      : [new SystemMessage(SYSTEM_PROMPT), ...trimmedHistory, ...(loopWarning ? [new HumanMessage(loopWarning.trim())] : [])];
 
   const response = await llm.invoke(inputMessages);
 
