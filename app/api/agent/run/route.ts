@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
               const toolMsg = messages[messages.length - 1];
               if (toolMsg?.content) {
                 const content = String(toolMsg.content);
-                send({
+                 send({
                   type: 'tool_result',
                   node: 'planner',
                   message: content,
