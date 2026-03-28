@@ -1,4 +1,5 @@
 import { ChatOllama } from '@langchain/ollama';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import type { PlannerState, PlanStep } from '../types';
@@ -30,6 +31,13 @@ export async function generatePlanNode(
     numCtx: 131072,
     numPredict: 8192,
   }).withStructuredOutput(planSchema);
+
+  // Google Gemini alternative — comment out Ollama above and uncomment below
+  // const llm = new ChatGoogleGenerativeAI({
+  //   model: 'gemini-2.5-pro-exp-03-25',
+  //   apiKey: process.env.GOOGLE_API_KEY,
+  //   temperature: 0,
+  // }).withStructuredOutput(planSchema);
 
   // Stringify the gathered context for the planner
   const contextSummary = state.messages

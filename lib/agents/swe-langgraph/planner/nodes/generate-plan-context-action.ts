@@ -1,4 +1,5 @@
 import { ChatOllama } from '@langchain/ollama';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { createGrepTool, createReadTool, createGlobTool, createCompletePlanningTool } from '../../tools';
 import type { PlannerState } from '../types';
@@ -23,6 +24,7 @@ STRICT RULES — READ CAREFULLY
    Start by calling glob with up to 4 patterns that match the file types relevant
    to the query. For example: ["src/**/*.ts", "**/*.tsx", "app/**/*.ts"].
    This gives you the project structure without reading file contents.
+   never do - *.css / *.scss files
 
 3. ONLY READ FILES THAT ARE DIRECTLY RELEVANT TO THE USER QUERY.
    Pass up to 4 relevant file paths in a single read call. Max 1 read call total.
@@ -30,7 +32,6 @@ STRICT RULES — READ CAREFULLY
 4. NEVER READ THESE — they are always irrelevant:
    - package.json / package-lock.json / yarn.lock
    - *.css / *.scss files (unless the task is purely about styling)
-   - README.md
    - test / spec files
    - lock files or config files unrelated to the feature
 
@@ -100,6 +101,13 @@ export async function generatePlanContextActionNode(
     numCtx: 131072,
     numPredict: 32768,
   }).bindTools([globTool, grepTool, readTool, completePlanningTool]);
+
+  // Google Gemini alternative — comment out Ollama above and uncomment below
+  // const llm = new ChatGoogleGenerativeAI({
+  //   model: 'gemini-2.5-pro-exp-03-25',
+  //   apiKey: process.env.GOOGLE_API_KEY,
+  //   temperature: 0,
+  // }).bindTools([globTool, grepTool, readTool, completePlanningTool]);
 
   const messageHistory = state.messages;
 

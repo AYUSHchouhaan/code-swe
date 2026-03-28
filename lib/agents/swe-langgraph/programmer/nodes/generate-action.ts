@@ -1,4 +1,5 @@
 import { ChatOllama } from '@langchain/ollama';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { createGrepTool, createReadTool, createEditTool, createNewFileTool, createGlobTool, createMarkTaskCompleteTool } from '../../tools';
 import type { ProgrammerState } from '../types';
@@ -37,7 +38,7 @@ STRICT RULES — FOLLOW EXACTLY
 2. NEVER READ THESE — always irrelevant:
    • package.json / package-lock.json / yarn.lock
    • *.css / *.scss (unless the task is purely about styling)
-   • README.md, test/spec files, config files unrelated to the feature
+   • test/spec files, config files unrelated to the feature
 
 3. NEVER READ OR GREP THE SAME THING TWICE.
    Check message history before every tool call. If you already read a file or ran a grep, skip it.
@@ -116,6 +117,13 @@ export async function generateActionNode(
     numCtx: 131072,
     numPredict: 32768,
   }).bindTools([globTool, grepTool, readTool, editTool, createFileTool, markCompleteTool]);
+
+  // Google Gemini alternative — comment out Ollama above and uncomment below
+  // const llm = new ChatGoogleGenerativeAI({
+  //   model: 'gemini-2.5-pro-exp-03-25',
+  //   apiKey: process.env.GOOGLE_API_KEY,
+  //   temperature: 0,
+  // }).bindTools([globTool, grepTool, readTool, editTool, createFileTool, markCompleteTool]);
 
   const planOverview = state.plan
     .map((t) => `  ${t.index}. [${t.completed ? '✅' : '⬜'}] ${t.plan}`)
