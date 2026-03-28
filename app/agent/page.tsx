@@ -1,15 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { Message } from '@/components/chat/ChatMessage';
 import ChatSection from '@/components/chat/ChatSection';
 import CodeEditor from '@/components/editor/CodeEditor';
 
 export default function AgentChatPage() {
+  const { data: session } = useSession();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [owner, setOwner] = useState('');
   const [repoName, setRepoName] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+
+  // Auto-populate owner from GitHub login
+  useEffect(() => {
+    if (session?.githubLogin && !owner) {
+      setOwner(session.githubLogin);
+    }
+  }, [session?.githubLogin]);
 
   const addMessage = (
     role: 'user' | 'agent',
@@ -92,11 +102,12 @@ export default function AgentChatPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
       {/* Left column — Chat */}
-      <div className="w-105 shrink-0 flex flex-col h-full">
+      <div className="w-1/2 flex flex-col h-full">
         <ChatSection
           messages={messages}
           input={input}
           setInput={setInput}
+          owner={owner}
           repoName={repoName}
           setRepoName={setRepoName}
           isRunning={isRunning}
@@ -105,7 +116,7 @@ export default function AgentChatPage() {
       </div>
 
       {/* Right column — Code Editor */}
-      <div className="flex-1 min-w-0 flex flex-col h-full">
+      <div className="w-1/2 flex flex-col h-full">
         <CodeEditor repoName={repoName} />
       </div>
     </div>

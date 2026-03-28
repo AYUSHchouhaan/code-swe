@@ -20,33 +20,9 @@ export async function GET() {
     const items = fs.readdirSync(downloadsPath);
     
     // Filter only directories
-    const repos = items.filter(item => {
-      const itemPath = path.join(downloadsPath, item);
-      return fs.statSync(itemPath).isDirectory();
-    }).map(repoName => {
-      const repoPath = path.join(downloadsPath, repoName);
-      const indexPath = path.join(repoPath, '.codebase-index', 'index.json');
-      const architecturePath = path.join(repoPath, '.codebase-index', 'architecture.json');
-      const hasIndex = fs.existsSync(indexPath);
-      const hasMapped = fs.existsSync(architecturePath);
-      
-      let indexedFiles = 0;
-      if (hasIndex) {
-        try {
-          const indexData = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-          indexedFiles = Array.isArray(indexData) ? indexData.length : 0;
-        } catch (error) {
-          console.error(`Error reading index for ${repoName}:`, error);
-        }
-      }
-
-      return {
-        name: repoName,
-        hasIndex,
-        indexedFiles,
-        hasMapped,
-      };
-    });
+    const repos = items
+      .filter(item => fs.statSync(path.join(downloadsPath, item)).isDirectory())
+      .map(name => ({ name }));
 
     return NextResponse.json({
       success: true,

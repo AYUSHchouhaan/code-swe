@@ -14,16 +14,18 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, account }) {
-      // Persist the OAuth access_token to the token right after signin
+    async jwt({ token, account, profile }) {
       if (account) {
         token.accessToken = account.access_token;
+      }
+      if (profile) {
+        token.githubLogin = (profile as any).login;
       }
       return token;
     },
     async session({ session, token }) {
-      // Send properties to the client, like an access_token from a provider.
       session.accessToken = token.accessToken as string;
+      session.githubLogin = token.githubLogin as string;
       return session;
     },
   },

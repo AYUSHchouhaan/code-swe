@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       process.cwd(),
       "public",
       "downloads",
-      `${trimmedOwner}-${trimmedRepo}-${Date.now()}`
+      trimmedRepo
     );
 
     console.log(`Downloading ${trimmedOwner}/${trimmedRepo} to ${destination}...`);
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
             Authorization: `Bearer ${session.accessToken}`,
             Accept: "application/vnd.github.v3+json",
             "User-Agent": "GitHub-Repo-Downloader",
-          },
+          },  
         }
       );
 

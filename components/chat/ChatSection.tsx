@@ -9,6 +9,7 @@ interface ChatSectionProps {
   messages: Message[];
   input: string;
   setInput: (v: string) => void;
+  owner: string;
   repoName: string;
   setRepoName: (v: string) => void;
   isRunning: boolean;
@@ -19,6 +20,7 @@ export default function ChatSection({
   messages,
   input,
   setInput,
+  owner,
   repoName,
   setRepoName,
   isRunning,
@@ -33,6 +35,7 @@ export default function ChatSection({
         setInput={setInput}
         onSend={onSend}
         isRunning={isRunning}
+        owner={owner}
         repoName={repoName}
       />
     </div>
