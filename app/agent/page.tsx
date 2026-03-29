@@ -102,7 +102,7 @@ export default function AgentChatPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
       {/* Left column — Chat */}
-      <div className="w-1/2 flex flex-col h-full">
+      <div className="w-[35%] flex flex-col h-full">
         <ChatSection
           messages={messages}
           input={input}
@@ -116,7 +116,7 @@ export default function AgentChatPage() {
       </div>
 
       {/* Right column — Code Editor */}
-      <div className="w-1/2 flex flex-col h-full">
+      <div className="w-[65%] flex flex-col h-full">
         <CodeEditor repoName={repoName} />
       </div>
     </div>
