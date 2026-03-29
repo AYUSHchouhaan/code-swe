@@ -84,10 +84,10 @@ complete_planning FORMAT
 
 Do NOT keep exploring after calling complete_planning.`;
 
-export async function generatePlanContextActionNode(
+export async function generatePlanActionNode(
   state: PlannerState
 ): Promise<Partial<PlannerState>> {
-  console.log('\n=== PLANNER NODE: generate-plan-context-action ===');
+  console.log('\n=== PLANNER NODE: generate-plan-action ===');
 
   const grepTool = createGrepTool(state.repoPath);
   const readTool = createReadTool(state.repoPath);

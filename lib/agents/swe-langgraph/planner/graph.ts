@@ -2,8 +2,8 @@ import { END, START, StateGraph } from '@langchain/langgraph';
 import { AIMessage } from '@langchain/core/messages';
 import { PlannerStateAnnotation, PlannerState } from './types';
 import {
-  generatePlanContextActionNode,
-  takeActionContextNode,
+  generatePlanActionNode,
+  takePlanActionNode,
   generatePlanNode,
   notesNode,
   plannerReasoningThinkingNode,
@@ -26,8 +26,8 @@ function routeAfterContextAction(state: PlannerState): string {
       console.log('  → routing to generate-plan (complete_planning called)');
       return 'generate-plan';
     }
-    console.log(`  → routing to take-action-context (tool: ${toolName})`);
-    return 'take-action-context';
+    console.log(`  → routing to take-plan-action (tool: ${toolName})`);
+    return 'take-plan-action';
   }
 
   // No tool call — model is reasoning/thinking
@@ -36,22 +36,22 @@ function routeAfterContextAction(state: PlannerState): string {
 }
 
 const workflow = new StateGraph(PlannerStateAnnotation)
-  .addNode('generate-plan-context-action', generatePlanContextActionNode)
-  .addNode('take-action-context', takeActionContextNode)
+  .addNode('generate-plan-action', generatePlanActionNode)
+  .addNode('take-plan-action', takePlanActionNode)
   .addNode('reasoning-thinking', plannerReasoningThinkingNode)
   .addNode('generate-plan', generatePlanNode)
   .addNode('generate-notes', notesNode)
   // ── edges ──
-  .addEdge(START, 'generate-plan-context-action')
-  .addConditionalEdges('generate-plan-context-action', routeAfterContextAction, {
-    'take-action-context': 'take-action-context',
+  .addEdge(START, 'generate-plan-action')
+  .addConditionalEdges('generate-plan-action', routeAfterContextAction, {
+    'take-plan-action': 'take-plan-action',
     'generate-plan': 'generate-plan',
     'reasoning-thinking': 'reasoning-thinking',
   })
   // After executing a tool, loop back to gather more context
-  .addEdge('take-action-context', 'generate-plan-context-action')
-  // After reasoning, loop back to generate-plan-context-action
-  .addEdge('reasoning-thinking', 'generate-plan-context-action')
+  .addEdge('take-plan-action', 'generate-plan-action')
+  // After reasoning, loop back to generate-plan-action
+  .addEdge('reasoning-thinking', 'generate-plan-action')
   // After plan is ready, create notes then finish
   .addEdge('generate-plan', 'generate-notes')
   .addEdge('generate-notes', END);

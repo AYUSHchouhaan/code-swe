@@ -9,10 +9,10 @@ import type { PlannerState } from '../types';
  * Executes all pending tool calls from the last AI message and appends
  * ToolMessage results back to the conversation so the LLM can continue.
  */
-export async function takeActionContextNode(
+export async function takePlanActionNode(
   state: PlannerState
 ): Promise<Partial<PlannerState>> {
-  console.log('\n=== PLANNER NODE: take-action-context ===');
+  console.log('\n=== PLANNER NODE: take-plan-action ===');
 
   const grepTool = createGrepTool(state.repoPath);
   const readTool = createReadTool(state.repoPath);
