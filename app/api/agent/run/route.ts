@@ -5,15 +5,6 @@ import { plannerGraph, programmerGraph } from '@/lib/agents/swe-langgraph';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Returns a human-readable label for a tool call based on its args */
-function toolCallMessage(toolName: string, args: Record<string, any>): string {
-  if (args.filePaths) return (args.filePaths as string[]).join(', ');
-  if (args.filePath) return args.filePath;
-  if (args.patterns) return (args.patterns as string[]).join(', ');
-  if (args.query) return args.query;
-  return toolName;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -63,7 +54,6 @@ export async function POST(request: NextRequest) {
                   type: 'tool_call',
                   tool: toolCall.name,
                   node: 'planner',
-                  message: toolCallMessage(toolCall.name, args),
                   data: args,
                 });
               } else if (lastAIMsg) {
@@ -74,7 +64,6 @@ export async function POST(request: NextRequest) {
                 send({
                   type: 'reasoning',
                   node: 'planner',
-                  message: content,
                   data: { content },
                 });
               }
@@ -86,7 +75,6 @@ export async function POST(request: NextRequest) {
                  send({
                   type: 'tool_result',
                   node: 'planner',
-                  message: content,
                   data: { content },
                 });
               }
@@ -102,8 +90,8 @@ export async function POST(request: NextRequest) {
             return;
           }
 
-          send({ type: 'result', node: 'generate-plan', message: `Plan ready - ${plan.length} step(s)`, data: { plan } });
-          send({ type: 'result', node: 'generate-notes', message: 'Context notes captured', data: { notes } });
+          send({ type: 'result', node: 'generate-plan', data: { plan } });
+          send({ type: 'result', node: 'generate-notes', data: { notes } });
 
           // Phase 2 - Programmer Agent
           send({ type: 'phase', message: 'Phase 2: Implementing changes...' });
@@ -128,7 +116,6 @@ export async function POST(request: NextRequest) {
                   type: 'tool_call',
                   tool: toolCall.name,
                   node: 'programmer',
-                  message: toolCallMessage(toolCall.name, args),
                   data: args,
                 });
               } else if (lastAIMsg) {
@@ -139,7 +126,6 @@ export async function POST(request: NextRequest) {
                 send({
                   type: 'reasoning',
                   node: 'programmer',
-                  message: content,
                   data: { content },
                 });
               }
@@ -151,7 +137,6 @@ export async function POST(request: NextRequest) {
                 send({
                   type: 'tool_result',
                   node: 'programmer',
-                  message: content,
                   data: { content },
                 });
               }
@@ -161,14 +146,12 @@ export async function POST(request: NextRequest) {
               send({
                 type: 'step',
                 node: nodeName,
-                message: `Task ${completedCount}/${updatedPlan.length} complete`,
                 data: { plan: updatedPlan, completedCount, totalCount: updatedPlan.length },
               });
             } else if (nodeName === 'end-conclusion') {
               send({
                 type: 'complete',
                 node: nodeName,
-                message: 'All tasks complete!',
                 data: { summary: update.summary },
               });
             }

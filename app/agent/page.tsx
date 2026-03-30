@@ -82,8 +82,8 @@ export default function AgentChatPage() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.message) {
-                addMessage('agent', data.message, data.data, data.type, data.node, data.tool);
+              if (data.type) {
+                addMessage('agent', data.message ?? '', data.data, data.type, data.node, data.tool);
               }
             } catch (e) {
               console.error('Error parsing SSE data:', e);
