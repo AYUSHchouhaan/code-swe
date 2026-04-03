@@ -8,6 +8,7 @@ import NotesMessage from './messages/NotesMessage';
 import PlanMessage from './messages/PlanMessage';
 import CompleteTaskMessage from './messages/CompleteTaskMessage';
 import ConclusionMessage from './messages/ConclusionMessage';
+import ToolResultMessage from './messages/ToolResultMessage';
 
 export interface Message {
   id: string;
@@ -42,6 +43,9 @@ export default function ChatMessage({ message }: ChatMessageProps) {
       return <FileOpMessage message={message} />;
     }
   }
+
+  // ── Tool results ─────────────────────────────────────────────
+  if (type === 'tool_result') return <ToolResultMessage message={message} />;
 
   // ── Agent reasoning ─────────────────────────────────────────
   if (type === 'reasoning') return <ReasoningMessage message={message} />;

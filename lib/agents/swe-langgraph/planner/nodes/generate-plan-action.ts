@@ -7,7 +7,7 @@ import type { PlannerState } from '../types';
 const SYSTEM_PROMPT = `You are a senior software engineer investigating a codebase to plan an implementation.
 
 You have four tools:
-- glob              → find files by path pattern (e.g. "src/**/*.ts", "*.js") — use this FIRST
+- glob              → find files by path pattern (e.g. "**/src/**/*.ts", "**/*.js") — use this FIRST
 - grep              → search the codebase for files containing a keyword/pattern
 - read              → read up to 4 files at once by passing an array of paths
 - complete_planning → CALL THIS as soon as you have enough context to write the plan
@@ -21,10 +21,11 @@ STRICT RULES — READ CAREFULLY
    best next tool call and make it immediately.
 
 2. USE GLOB FIRST TO DISCOVER FILES.
-   Start by calling glob with up to 4 patterns that match the file types relevant
-   to the query. For example: ["src/**/*.ts", "**/*.tsx", "app/**/*.ts"].
+   Start by calling glob with up to 7 patterns that match the file types relevant 
+   to the query. For example: ["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"].
+   Always prefix directory names with **/ so patterns match at any depth in the repo.
    This gives you the project structure without reading file contents.
-   never do - *.css / *.scss files
+   never look for - *.css / *.scss files
 
 3. ONLY READ FILES THAT ARE DIRECTLY RELEVANT TO THE USER QUERY.
    Pass up to 4 relevant file paths in a single read call. Max 1 read call total.
@@ -53,15 +54,15 @@ EFFICIENT WORKFLOW
 ════════════════════════════════════════════
 
 Step 1 — Call glob with patterns that match the relevant file types.
-          E.g. ["src/**/*.ts", "app/**/*.tsx"] to see all source files.
-          Pick up to 4 files that look most relevant from the results.
+          Always use **/ prefix: ["**/*.js", "**/*.jsx"] to see all source files.
+          You can pass up to 7 patterns. Pick up to 4 files that look most relevant from the results.
 
 Step 2 — Call read ONCE with all relevant file paths in one array (max 4).
           e.g. read({ filePaths: ["src/a.ts", "src/b.ts", "app/c.tsx"] })
           Stop reading after this — you now have enough context.
 
 Step 3 — If something is still unclear, do ONE targeted grep.
-          use the result to pick which file to read next if relevent .
+          Use the result to pick which file to read next if relevant.
 
 Step 4 — Call complete_planning as soon as the picture is clear.
 
@@ -111,33 +112,10 @@ export async function generatePlanActionNode(
 
   const messageHistory = state.messages;
 
-  // Count consecutive no-tool-call responses to detect empty reasoning loops
-  let emptyReasoningStreak = 0;
-  for (let i = messageHistory.length - 1; i >= 0; i--) {
-    const msg = messageHistory[i];
-    if (msg.getType() === 'ai') {
-      const ai = msg as AIMessage;
-      if (!ai.tool_calls || ai.tool_calls.length === 0) {
-        emptyReasoningStreak++;
-      } else {
-        break;
-      }
-    }
-  }
-
-  // Hard-break: if the model has produced 2+ empty reasoning responses in a row,
-  // inject a strong reminder so it makes a tool call on the next turn.
-  const loopWarning =
-    emptyReasoningStreak >= 2
-      ? '\n\n⚠️  IMPORTANT: You have produced multiple responses with no tool call. ' +
-        'You MUST call a tool right now — either read a relevant file, run a grep, ' +
-        'or call complete_planning. Do NOT respond with text only.'
-      : '';
-
   const firstMessage = new HumanMessage(
     `User query: "${state.query}"\n\n` +
     `Start by calling glob with patterns that match the relevant file types for this query. ` +
-    `Then read the most relevant files (max 5), then call complete_planning.${loopWarning}`
+    `Then read the most relevant files (max 4), then call complete_planning.`
   );
 
   // Keep history lean — only last 30 messages to avoid context bloat
@@ -146,9 +124,9 @@ export async function generatePlanActionNode(
   const inputMessages =
     messageHistory.length === 0
       ? [new SystemMessage(SYSTEM_PROMPT), firstMessage]
-      : [new SystemMessage(SYSTEM_PROMPT), ...trimmedHistory, ...(loopWarning ? [new HumanMessage(loopWarning.trim())] : [])];
+      : [new SystemMessage(SYSTEM_PROMPT), ...trimmedHistory];
 
-  const response = await llm.invoke(inputMessages);
+  const response = await llm.invoke(inputMessages) as AIMessage;
 
   const newMessages =
     messageHistory.length === 0

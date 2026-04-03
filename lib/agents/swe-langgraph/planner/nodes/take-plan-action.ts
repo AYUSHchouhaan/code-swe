@@ -44,14 +44,11 @@ export async function takePlanActionNode(
 
   const t = toolMap[name];
   let result: string;
-  if (t) {
-    try {
-      result = String(await t.invoke(args as any));
-    } catch (err) {
-      result = `Error invoking ${name}: ${err instanceof Error ? err.message : String(err)}`;
-    }
-  } else {
-    result = `Unknown tool: ${name}`;
+
+  try {
+    result = String(await t.invoke(args as any));
+  } catch (err) {
+    result = `Error invoking ${name}: ${err instanceof Error ? err.message : String(err)}`;
   }
 
   console.log(`  Result (${name}):`, result.slice(0, 120));

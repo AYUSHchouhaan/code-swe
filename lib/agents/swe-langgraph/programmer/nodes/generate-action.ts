@@ -1,6 +1,6 @@
 import { ChatOllama } from '@langchain/ollama';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { createGrepTool, createReadTool, createEditTool, createNewFileTool, createGlobTool, createMarkTaskCompleteTool } from '../../tools';
 import type { ProgrammerState } from '../types';
 
@@ -18,7 +18,7 @@ ${taskDescription}
 ════════════════════════════════════════════
 
 Tools available:
-  glob              → find files by path pattern (e.g. "src/**/*.ts")
+  glob              → find files by path pattern — always prefix dirs with **/ (e.g. "**/src/**/*.ts")
   grep              → search file contents for keywords
   read              → read up to 4 files at once — pass an array of relevant paths
   edit              → modify an EXISTING file (exact string replacement)
@@ -143,7 +143,7 @@ export async function generateActionNode(
       ? [new SystemMessage(systemPrompt), firstTaskMessage]
       : [new SystemMessage(systemPrompt), ...trimmedHistory];
 
-  const response = await llm.invoke(inputMessages);
+  const response = await llm.invoke(inputMessages) as AIMessage;
 
   const newMessages =
     messageHistory.length === 0

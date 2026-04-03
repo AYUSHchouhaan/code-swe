@@ -32,16 +32,16 @@ export function createGrepTool(repoPath: string) {
             '--glob', '!.cache',
             '--glob', '!__pycache__',
             '-e', query,              // supports "word1|word2" alternation natively
-            repoPath,
+            '.',
           ],
-          { maxBuffer: 10 * 1024 * 1024 }
+          { maxBuffer: 10 * 1024 * 1024, cwd: repoPath }
         );
 
         const allFiles = stdout
           .trim()
           .split('\n')
           .filter(Boolean)
-          .map((f) => f.replace(repoPath, '').replace(/^[\\/]/, '').replace(/\\/g, '/'));
+          .map((f) => f.replace(/\\/g, '/').replace(/^\.\//,  ''));
 
         const files = allFiles.slice(0, 5);
 

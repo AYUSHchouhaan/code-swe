@@ -32,16 +32,16 @@ export function createGlobTool(repoPath: string) {
             '--glob', '!.cache',
             // User patterns (include filters)
             ...includeGlobs,
-            repoPath,
+            '.',
           ],
-          { maxBuffer: 10 * 1024 * 1024 }
+          { maxBuffer: 10 * 1024 * 1024, cwd: repoPath }
         );
 
         const files = stdout
           .trim()
           .split('\n')
           .filter(Boolean)
-          .map((f) => f.replace(repoPath, '').replace(/^[\\/]/, '').replace(/\\/g, '/'));
+          .map((f) => f.replace(/\\/g, '/').replace(/^\.\//,  ''));
 
         if (files.length === 0) {
           return `No files found matching: ${patterns.join(', ')}`;
@@ -59,14 +59,14 @@ export function createGlobTool(repoPath: string) {
     {
       name: 'glob',
       description:
-        'Find files by path pattern. Provide up to 4 glob patterns such as "src/**/*.ts" or "*.js" to locate files without reading their contents. Returns a list of matching file paths relative to the repo root.',
+        'Find files by path pattern. Provide up to 7 glob patterns such as "**/src/**/*.ts" or "**/*.js" to locate files without reading their contents. Returns a list of matching file paths relative to the repo root.',
       schema: z.object({
         patterns: z
           .array(z.string())
           .min(1)
-          .max(4)
+          .max(7)
           .describe(
-            'Up to 4 glob patterns, e.g. ["src/**/*.ts", "**/*.js"]. Use ** for recursive matching.'
+            'Up to 7 glob patterns. Always use **/ prefix for directory names, e.g. ["**/src/**/*.ts", "**/components/**/*.tsx", "**/*.js"]. Use ** for recursive matching at any depth.'
           ),
       }),
     }

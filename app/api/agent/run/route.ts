@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
             const update = (chunk as any)[nodeName];
             finalPlanner = { ...finalPlanner, ...update };
 
-            if (nodeName === 'generate-plan-context-action') {
+            if (nodeName === 'generate-plan-action') {
               const messages = update.messages || [];
               const lastAIMsg = messages[messages.length - 1];
 
@@ -61,19 +61,22 @@ export async function POST(request: NextRequest) {
                   typeof lastAIMsg.content === 'string'
                     ? lastAIMsg.content
                     : JSON.stringify(lastAIMsg.content);
-                send({
-                  type: 'reasoning',
-                  node: 'planner',
-                  data: { content },
-                });
+                if (content.trim()) {
+                  send({
+                    type: 'reasoning',
+                    node: 'planner',
+                    data: { content },
+                  });
+                }
               }
-            } else if (nodeName === 'take-action-context') {
+            } else if (nodeName === 'take-plan-action') {
               const messages = update.messages || [];
               const toolMsg = messages[messages.length - 1];
               if (toolMsg?.content) {
                 const content = String(toolMsg.content);
-                 send({
+                send({
                   type: 'tool_result',
+                  tool: (toolMsg as any).name ?? undefined,
                   node: 'planner',
                   data: { content },
                 });
@@ -123,11 +126,13 @@ export async function POST(request: NextRequest) {
                   typeof lastAIMsg.content === 'string'
                     ? lastAIMsg.content
                     : JSON.stringify(lastAIMsg.content);
-                send({
-                  type: 'reasoning',
-                  node: 'programmer',
-                  data: { content },
-                });
+                if (content.trim()) {
+                  send({
+                    type: 'reasoning',
+                    node: 'programmer',
+                    data: { content },
+                  });
+                }
               }
             } else if (nodeName === 'take-action') {
               const messages = update.messages || [];
@@ -136,6 +141,7 @@ export async function POST(request: NextRequest) {
                 const content = String(toolMsg.content);
                 send({
                   type: 'tool_result',
+                  tool: (toolMsg as any).name ?? undefined,
                   node: 'programmer',
                   data: { content },
                 });
