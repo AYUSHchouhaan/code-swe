@@ -39,7 +39,6 @@ export async function generatePlanNode(
   //   temperature: 0,
   // }).withStructuredOutput(planSchema);
 
-  // Stringify the gathered context for the planner
   const contextSummary = state.messages
     .map((m) => {
       const type = m.getType();
