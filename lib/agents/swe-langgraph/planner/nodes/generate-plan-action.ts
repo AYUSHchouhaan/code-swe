@@ -118,7 +118,6 @@ export async function generatePlanActionNode(
     `Then read the most relevant files (max 4), then call complete_planning.`
   );
 
-  // Keep history lean — only last 30 messages to avoid context bloat
   const trimmedHistory = messageHistory.slice(-30);
 
   const inputMessages =

@@ -23,15 +23,15 @@ export default function ChatHeader({ repoName, setRepoName, isRunning }: ChatHea
   }, []);
 
   return (
-    <div className="bg-white border-b border-gray-200 p-4">
-      <h1 className="text-2xl font-bold text-gray-900">SWE Agent Chat</h1>
+    <div className="bg-zinc-900 border-b border-zinc-700 p-4">
+      <h1 className="text-2xl font-bold text-zinc-50">SWE Agent Chat</h1>
       <div className="mt-2 flex gap-2 items-center">
-        <label className="text-sm text-gray-600 shrink-0">Repository:</label>
+        <label className="text-sm text-zinc-400 shrink-0">Repository:</label>
         <select
           value={repoName}
           onChange={(e) => setRepoName(e.target.value)}
           disabled={isRunning}
-          className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100"
+          className="flex-1 px-3 py-1.5 border border-zinc-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-zinc-800 text-zinc-50 disabled:bg-zinc-700 disabled:text-zinc-400"
         >
           <option value="">— select a downloaded repo —</option>
           {repos.map((r) => (

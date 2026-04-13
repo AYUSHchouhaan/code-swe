@@ -49,7 +49,7 @@ function FileTreeNode({ node, depth, selectedPath, onSelect }: FileTreeNodeProps
       <div>
         <button
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1 w-full text-left px-2 py-0.5 hover:bg-gray-100 rounded text-sm text-gray-700"
+          className="flex items-center gap-1 w-full text-left px-2 py-0.5 hover:bg-zinc-800 rounded text-sm text-zinc-300"
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
         >
           {open ? (
@@ -83,8 +83,8 @@ function FileTreeNode({ node, depth, selectedPath, onSelect }: FileTreeNodeProps
       onClick={() => onSelect(node)}
       className={`flex items-center gap-1 w-full text-left px-2 py-0.5 rounded text-sm truncate ${
         isSelected
-          ? 'bg-blue-100 text-blue-700 font-medium'
-          : 'hover:bg-gray-100 text-gray-700'
+          ? 'bg-zinc-700 text-zinc-50 font-medium'
+          : 'hover:bg-zinc-800 text-zinc-400'
       }`}
       style={{ paddingLeft: `${depth * 12 + 22}px` }}
     >
@@ -159,17 +159,17 @@ export default function CodeEditor({ repoName }: CodeEditorProps) {
   const noRepo = !repoName.trim();
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-zinc-950">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
-        <span className="text-sm font-semibold text-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700 bg-zinc-900 shrink-0">
+        <span className="text-sm font-semibold text-zinc-300">
           {repoName ? repoName : 'Code Explorer'}
         </span>
         {!noRepo && (
           <button
             onClick={() => fetchTree(repoName)}
             disabled={loadingTree}
-            className="p-1 rounded hover:bg-gray-200 text-gray-500 disabled:opacity-40"
+            className="p-1 rounded hover:bg-zinc-700 text-zinc-400 disabled:opacity-40"
             title="Refresh"
           >
             <RefreshCw size={14} className={loadingTree ? 'animate-spin' : ''} />
@@ -179,14 +179,14 @@ export default function CodeEditor({ repoName }: CodeEditorProps) {
 
       <div className="flex flex-1 min-h-0">
         {/* File Explorer */}
-        <div className="w-52 shrink-0 border-r border-gray-200 overflow-y-auto bg-gray-50 py-2">
+        <div className="w-52 shrink-0 border-r border-zinc-700 overflow-y-auto bg-zinc-900 py-2">
           {noRepo && (
-            <p className="text-xs text-gray-400 px-3 mt-2">
+            <p className="text-xs text-zinc-500 px-3 mt-2">
               Enter a repository name to browse files.
             </p>
           )}
           {loadingTree && (
-            <p className="text-xs text-gray-400 px-3 mt-2 flex items-center gap-1">
+            <p className="text-xs text-zinc-500 px-3 mt-2 flex items-center gap-1">
               <RefreshCw size={12} className="animate-spin" /> Loading...
             </p>
           )}
@@ -194,7 +194,7 @@ export default function CodeEditor({ repoName }: CodeEditorProps) {
             <p className="text-xs text-red-500 px-3 mt-2">{treeError}</p>
           )}
           {!loadingTree && !treeError && tree.length === 0 && !noRepo && (
-            <p className="text-xs text-gray-400 px-3 mt-2">No files found.</p>
+            <p className="text-xs text-zinc-500 px-3 mt-2">No files found.</p>
           )}
           {tree.map((node) => (
             <FileTreeNode
@@ -211,20 +211,20 @@ export default function CodeEditor({ repoName }: CodeEditorProps) {
         <div className="flex-1 min-w-0 flex flex-col">
           {/* Tab bar */}
           {selectedFile && (
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-gray-50 text-xs text-gray-600 shrink-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-700 bg-zinc-900 text-xs text-zinc-400 shrink-0">
               <File size={12} className="text-gray-400" />
               <span className="font-mono">{selectedFile.path}</span>
             </div>
           )}
 
           {loadingFile && (
-            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+            <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
               <RefreshCw size={16} className="animate-spin mr-2" /> Loading file...
             </div>
           )}
 
           {!loadingFile && !selectedFile && (
-            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+            <div className="flex-1 flex items-center justify-center text-zinc-500 text-sm">
               Select a file to view its contents
             </div>
           )}
@@ -235,7 +235,7 @@ export default function CodeEditor({ repoName }: CodeEditorProps) {
                 height="100%"
                 language={getLanguage(selectedFile.name)}
                 value={fileContent}
-                theme="vs"
+                  theme="vs-dark"
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },

@@ -27,7 +27,7 @@ export default function ChatSection({
   onSend,
 }: ChatSectionProps) {
   return (
-    <div className="flex flex-col h-full border-r border-gray-200 bg-gray-50">
+    <div className="flex flex-col h-full border-r border-zinc-700 bg-zinc-900">
       <ChatHeader repoName={repoName} setRepoName={setRepoName} isRunning={isRunning} />
       <ChatMessages messages={messages} />
       <ChatInput

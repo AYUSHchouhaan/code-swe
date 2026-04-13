@@ -56,7 +56,7 @@ export default function AgentChatPage() {
       const response = await fetch('/api/agent/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userQuery, repoName: repo }),
+        body: JSON.stringify({ query: userQuery, repoName: repo   }),
       });
 
       if (!response.ok) {
@@ -100,7 +100,7 @@ export default function AgentChatPage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
+    <div className="flex h-screen overflow-hidden bg-zinc-900">
       {/* Left column — Chat */}
       <div className="w-[35%] flex flex-col h-full">
         <ChatSection

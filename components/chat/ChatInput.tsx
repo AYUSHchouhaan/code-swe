@@ -47,7 +47,7 @@ export default function ChatInput({ input, setInput, onSend, isRunning, owner, r
   };
 
   return (
-    <div className="bg-white border-t border-gray-200 p-4">
+    <div className="bg-zinc-900 border-t border-zinc-700 p-4">
       <div className="max-w-4xl mx-auto flex gap-2">
         <input
           type="text"
@@ -55,13 +55,13 @@ export default function ChatInput({ input, setInput, onSend, isRunning, owner, r
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Ask the agent to help with your codebase..."
-          className="flex-1 min-w-0 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          className="flex-1 min-w-0 px-4 py-3 border border-zinc-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-zinc-800 text-zinc-50 placeholder-zinc-500 disabled:bg-zinc-700 disabled:text-zinc-500"
           disabled={isRunning || !repoName}
         />
         <button
           onClick={onSend}
           disabled={isRunning || !input.trim() || !repoName}
-          className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shrink-0"
+          className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shrink-0"
         >
           {isRunning ? (
             <>
@@ -79,7 +79,7 @@ export default function ChatInput({ input, setInput, onSend, isRunning, owner, r
           onClick={handleCreatePR}
           disabled={prLoading || !owner.trim() || !repoName.trim()}
           title="Create Pull Request on GitHub"
-          className="px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shrink-0"
+          className="px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shrink-0"
         >
           {prLoading ? (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>

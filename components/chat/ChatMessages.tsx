@@ -19,7 +19,7 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {messages.length === 0 && (
-        <div className="text-center text-gray-500 mt-10">
+        <div className="text-center text-zinc-500 mt-10">
           <p className="text-lg">No messages yet</p>
           <p className="text-sm mt-2">Enter a repository name and ask the agent to help with your codebase!</p>
         </div>
